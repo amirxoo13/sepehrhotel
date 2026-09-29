@@ -336,8 +336,14 @@ export function checkOutSql(input: { stayId: number; actorId: string; allowBalan
         returning r.code
       ),
       room as (
+        -- A room taken out of service during the stay (MAINTENANCE, OUT_OF_SERVICE,
+        -- BLOCKED) keeps that status; staff clear it explicitly. Only an ordinary
+        -- occupied room goes to CLEANING.
         update rooms rm
-           set status = 'CLEANING'
+           set status = case
+                 when rm.status in ('MAINTENANCE', 'OUT_OF_SERVICE', 'BLOCKED') then rm.status
+                 else 'CLEANING'
+               end
           from closed
          where rm.id = closed.room_id
         returning rm.number, rm.id

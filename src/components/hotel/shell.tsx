@@ -1,12 +1,20 @@
-import { Link } from "@tanstack/react-router";
-import { Menu, X } from "lucide-react";
+import { Link, useRouterState } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
+import { LegacyIcon } from "@/components/hotel/legacy-icon";
 import { signOut } from "@/lib/auth/client";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
-import { getPublicHotel, getSessionContext } from "@/lib/hotel/api";
+import { getSessionContext } from "@/lib/hotel/api";
+import { useLegacyChrome } from "@/lib/legacy-chrome";
 import { nextReconnectDelay } from "@/lib/hotel/live-plan";
-import { useI18n } from "@/lib/i18n";
+import { useI18n, type Copy } from "@/lib/i18n";
 
+/**
+ * The shell around every app page: the old site's header (logo, menu, search
+ * icon), its title band (`#Subheader`) and its footer, with the same markup
+ * and classes as the saved home page (`src/legacy/home.html`), so the theme
+ * stylesheets render them the same. Only the menu differs: it carries this
+ * site's pages, the account entries and the language switch.
+ */
 const STAFF = new Set([
   "SUPER_ADMIN",
   "HOTEL_ADMIN",
@@ -21,24 +29,50 @@ const STAFF = new Set([
   "MANAGER",
 ]);
 
-type PublicHotel = Awaited<ReturnType<typeof getPublicHotel>>;
-
-const links = [
-  { to: "/", label: "navHome" },
+type NavTarget = "/rooms" | "/hotel" | "/dining" | "/gallery" | "/location" | "/contact" | "/policies";
+const links: { to: NavTarget; label: keyof Copy }[] = [
   { to: "/rooms", label: "navStay" },
   { to: "/hotel", label: "navHotel" },
   { to: "/dining", label: "navDining" },
   { to: "/gallery", label: "navGallery" },
   { to: "/location", label: "navPlace" },
-] as const;
+  { to: "/policies", label: "navPolicies" },
+  { to: "/contact", label: "navContact" },
+];
+
+/** The title band shows the page's name. */
+const TITLE_BY_PATH: Record<string, keyof Copy> = {
+  "/rooms": "navStay",
+  "/hotel": "navHotel",
+  "/dining": "navDining",
+  "/gallery": "navGallery",
+  "/location": "navPlace",
+  "/policies": "navPolicies",
+  "/contact": "navContact",
+  "/book": "book",
+  "/login": "signIn",
+  "/stay": "stay",
+  "/ops": "ops",
+  "/search": "searchTitle",
+};
+
+export function pageTitle(pathname: string, t: Copy): string {
+  const key = TITLE_BY_PATH[pathname];
+  if (key) return String(t[key]);
+  if (pathname.startsWith("/room/")) return String(t.qr);
+  return String(t.brand);
+}
+
+function MenuItem({ current, children }: { current: boolean; children: React.ReactNode }) {
+  return <li className={current ? "menu-item menu-item-type-post_type menu-item-object-page current-menu-item" : "menu-item menu-item-type-post_type menu-item-object-page"}>{children}</li>;
+}
 
 export function SiteHeader() {
   const { t, toggle } = useI18n();
   const { user } = useCurrentUserState();
-  const [open, setOpen] = useState(false);
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
   const [staff, setStaff] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
-  const closeRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!user) {
@@ -58,204 +92,282 @@ export function SiteHeader() {
     };
   }, [user]);
 
-  useEffect(() => {
-    if (!open) return;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    closeRef.current?.focus();
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.body.style.overflow = previous;
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  const book = (
-    <Link to="/book" search={{ checkIn: "", checkOut: "", guests: 1 }} className="btn btn-primary" onClick={() => setOpen(false)}>
-      {t.reserve}
-    </Link>
-  );
-
   return (
-    <header className="site-header">
-      <div className="wrap site-bar">
-        <a href="/" className="brand">
-          <span className="brand-mark" aria-hidden="true" />
-          <span>
-            <span className="brand-kicker">{t.city}</span>
-            <span className="brand-name">{t.brand}</span>
-          </span>
-        </a>
-        <nav className="desk-nav" aria-label={t.navHome}>
-          {links.map((item) =>
-            item.to === "/" ? (
-              // The home page is the old page on its own stylesheets: a full load, not a client-side route change.
-              <a key={item.to} href="/" className="nav-link">
-                {t[item.label]}
-              </a>
-            ) : (
-              <Link key={item.to} to={item.to} className="nav-link" activeProps={{ "data-status": "active" }}>
-                {t[item.label]}
-              </Link>
-            ),
-          )}
-        </nav>
-        <div className="site-tools">
-          <button type="button" className="btn btn-quiet" onClick={toggle}>
-            {t.lang}
-          </button>
-          {user ? (
-            <Link to="/stay" className="btn btn-quiet desk-only">
-              {t.stay}
-            </Link>
-          ) : (
-            <Link to="/login" className="btn btn-quiet desk-only">
-              {t.signIn}
-            </Link>
-          )}
-          {staff ? (
-            <Link to="/ops" className="btn btn-quiet desk-only">
-              {t.ops}
-            </Link>
-          ) : null}
-          {book}
-          <button type="button" className="btn btn-quiet menu-btn" aria-expanded={open} onClick={() => setOpen(true)}>
-            <Menu size={18} aria-hidden="true" />
-            <span className="sr-only">{t.menu}</span>
-          </button>
+    <div id="Header_wrapper" className="" dir="ltr">
+      <header id="Header">
+        <div className="header_placeholder" style={{ height: 0 }} />
+        <div id="Top_bar" className="" style={{ top: "61px" }}>
+          <div className="container">
+            <div className="column one">
+              <div className="top_bar_left clearfix">
+                <div className="logo">
+                  <a id="logo" href="/" title={t.brand} data-height="60" data-padding="15" className="retina">
+                    <img className="logo-main scale-with-grid " src="/legacy/img/logo2.png" data-height="590" alt="logo2" style={{ maxHeight: "60px" }} />
+                    <img className="logo-sticky scale-with-grid " src="/legacy/img/logo_2x.png" data-height="240" alt="logo_2x" style={{ maxHeight: "35px" }} />
+                    <img className="logo-mobile scale-with-grid " src="/legacy/img/logo2.png" data-height="590" alt="logo2" style={{ maxHeight: "90px" }} />
+                    <img className="logo-mobile-sticky scale-with-grid " src="/legacy/img/logo2.png" data-height="590" alt="logo2" style={{ maxHeight: "50px" }} />
+                  </a>
+                </div>
+                <div className="menu_wrapper">
+                  <nav id="menu" aria-label={t.menu}>
+                    <ul id="menu-main-menu" className="menu menu-main">
+                      <li className="menu-item menu-item-type-post_type menu-item-object-page menu-item-home">
+                        {/* The home page is the old page on its own stylesheets: a full load, not a client-side route change. */}
+                        <a href="/">
+                          <span>{t.navHome}</span>
+                        </a>
+                      </li>
+                      {links.map((item) => (
+                        <MenuItem key={item.to} current={pathname === item.to}>
+                          <Link to={item.to}>
+                            <span>{String(t[item.label])}</span>
+                          </Link>
+                        </MenuItem>
+                      ))}
+                      <MenuItem current={pathname === "/book"}>
+                        <Link to="/book" search={{ checkIn: "", checkOut: "", guests: 1 }}>
+                          <span>{t.reserve}</span>
+                        </Link>
+                      </MenuItem>
+                      {user ? (
+                        // The account entries sit under one item with a sub-menu, like "Hotels" on the old page.
+                        <li
+                          className={
+                            (pathname === "/stay" || pathname === "/ops" ? "current-menu-ancestor current-menu-parent " : "") +
+                            "menu-item menu-item-type-custom menu-item-object-custom menu-item-has-children submenu"
+                          }
+                        >
+                          <a
+                            href="#"
+                            onClick={(event) => {
+                              event.preventDefault();
+                            }}
+                          >
+                            <span>{t.account}</span>
+                          </a>
+                          <ul className="sub-menu">
+                            <MenuItem current={pathname === "/stay"}>
+                              <Link to="/stay">
+                                <span>{t.stay}</span>
+                              </Link>
+                            </MenuItem>
+                            {staff ? (
+                              <MenuItem current={pathname === "/ops"}>
+                                <Link to="/ops">
+                                  <span>{t.ops}</span>
+                                </Link>
+                              </MenuItem>
+                            ) : null}
+                            <li className="menu-item menu-item-type-custom menu-item-object-custom last-item">
+                              <a
+                                href="#"
+                                aria-disabled={signingOut}
+                                onClick={(event) => {
+                                  event.preventDefault();
+                                  if (signingOut) return;
+                                  setSigningOut(true);
+                                  void signOut().catch(() => setSigningOut(false));
+                                }}
+                              >
+                                <span>{t.signOut}</span>
+                              </a>
+                            </li>
+                          </ul>
+                          <span className="menu-toggle"></span>
+                        </li>
+                      ) : (
+                        <MenuItem current={pathname === "/login"}>
+                          <Link to="/login">
+                            <span>{t.signIn}</span>
+                          </Link>
+                        </MenuItem>
+                      )}
+                      <li className="menu-item menu-item-type-custom menu-item-object-custom last">
+                        <a
+                          href="#"
+                          lang={t.lang === "English" ? "en" : "fa"}
+                          onClick={(event) => {
+                            event.preventDefault();
+                            toggle();
+                          }}
+                        >
+                          <span>{t.lang}</span>
+                        </a>
+                      </li>
+                    </ul>
+                  </nav>
+                  <a className="responsive-menu-toggle " href="#" aria-label={t.menu}>
+                    <LegacyIcon name="icon-menu-fine" />
+                  </a>
+                </div>
+                <div className="secondary_menu_wrapper"></div>
+                <div className="banner_wrapper"></div>
+                <div className="search_wrapper">
+                  <form method="get" id="searchform" action="/search">
+                    <i className="icon_search icon-search-fine"></i>
+                    <a href="#" className="icon_close" aria-label={t.close}>
+                      <LegacyIcon name="icon-cancel-fine" />
+                    </a>
+                    <input type="text" className="field" name="s" placeholder={t.searchTitle} aria-label={t.searchTitle} />
+                    <input type="submit" className="display-none" value="" />
+                  </form>
+                </div>
+              </div>
+              <div className="top_bar_right">
+                <div className="top_bar_right_wrapper">
+                  <a id="search_button" href="#" aria-label={t.searchTitle}>
+                    <LegacyIcon name="icon-search-fine" />
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </header>
+      <div id="Subheader">
+        <div className="container">
+          <div className="column one">
+            <h1 className="title">{pageTitle(pathname, t)}</h1>
+          </div>
         </div>
       </div>
-      {open ? (
-        <>
-          <button type="button" className="drawer-backdrop" aria-label={t.close} onClick={() => setOpen(false)} />
-          <nav className="drawer" aria-label={t.menu}>
-            <button ref={closeRef} type="button" className="btn btn-quiet" onClick={() => setOpen(false)}>
-              <X size={18} aria-hidden="true" />
-              {t.close}
-            </button>
-            {links.map((item) =>
-              item.to === "/" ? (
-                <a key={item.to} href="/" className="nav-link">
-                  {t[item.label]}
-                </a>
-              ) : (
-                <Link key={item.to} to={item.to} className="nav-link" onClick={() => setOpen(false)}>
-                  {t[item.label]}
-                </Link>
-              ),
-            )}
-            <Link to="/policies" className="nav-link" onClick={() => setOpen(false)}>
-              {t.navPolicies}
-            </Link>
-            <Link to="/contact" className="nav-link" onClick={() => setOpen(false)}>
-              {t.navContact}
-            </Link>
-            {user ? (
-              <Link to="/stay" className="nav-link" onClick={() => setOpen(false)}>
-                {t.stay}
-              </Link>
-            ) : (
-              <Link to="/login" className="nav-link" onClick={() => setOpen(false)}>
-                {t.signIn}
-              </Link>
-            )}
-            {staff ? (
-              <Link to="/ops" className="nav-link" onClick={() => setOpen(false)}>
-                {t.ops}
-              </Link>
-            ) : null}
-            {book}
-            {user ? (
-              <button
-                type="button"
-                className="btn btn-quiet"
-                disabled={signingOut}
-                onClick={() => {
-                  setSigningOut(true);
-                  void signOut().catch(() => setSigningOut(false));
-                }}
-              >
-                {t.signOut}
-              </button>
-            ) : null}
-          </nav>
-        </>
-      ) : null}
-    </header>
+    </div>
   );
 }
 
+/** The old site's footer, verbatim (see docs/OPERATIONS.md for the two open items). */
 export function SiteFooter() {
-  const { t, locale, toggle } = useI18n();
-  const [hotel, setHotel] = useState<PublicHotel | null>(null);
-  useEffect(() => {
-    let stop = false;
-    void getPublicHotel()
-      .then((data) => {
-        if (!stop) setHotel(data);
-      })
-      .catch(() => undefined);
-    return () => {
-      stop = true;
-    };
-  }, []);
-  const facts = (hotel?.facts ?? []) as { key: string; value_en: string; value_fa: string }[];
-  const settings = (hotel?.settings ?? []) as { key: string; value: string }[];
-  const phone = facts.find((fact) => fact.key === "phone");
-  const address = settings.find((item) => item.key === (locale === "fa" ? "address_fa" : "address_en"));
-  const phoneText = phone ? (locale === "fa" ? phone.value_fa : phone.value_en) : "";
   return (
-    <footer className="site-footer">
-      <div className="wrap footer-grid">
-        <div>
-          <p className="brand-name">{t.brand}</p>
-          <p>{address?.value}</p>
-          {phoneText ? (
-            <p>
-              <a href="tel:+982122245050">{phoneText}</a>
-            </p>
-          ) : null}
-          <p>{t.noPublicEmail}</p>
-        </div>
-        <div>
-          <h2>{t.navHotel}</h2>
-          <ul>
-            <li><Link to="/hotel">{t.navHotel}</Link></li>
-            <li><Link to="/rooms">{t.navStay}</Link></li>
-            <li><Link to="/gallery">{t.navGallery}</Link></li>
-            <li><Link to="/location">{t.navPlace}</Link></li>
-          </ul>
-        </div>
-        <div>
-          <h2>{t.stay}</h2>
-          <ul>
-            <li><Link to="/book" search={{ checkIn: "", checkOut: "", guests: 1 }}>{t.reserve}</Link></li>
-            <li><Link to="/stay">{t.stay}</Link></li>
-            <li><Link to="/dining">{t.navDining}</Link></li>
-            <li><Link to="/login">{t.account}</Link></li>
-          </ul>
-        </div>
-        <div>
-          <h2>{t.navContact}</h2>
-          <ul>
-            <li><Link to="/contact">{t.navContact}</Link></li>
-            <li><Link to="/policies">{t.navPolicies}</Link></li>
-            <li>
-              <a href="http://melalgroup.com/index.php/sepehr-apartment-hotel/">{t.groupPage}</a>
-            </li>
-          </ul>
+    <footer id="Footer" className="clearfix " dir="ltr">
+      <div className="widgets_wrapper ">
+        <div className="container">
+          <div className="column one-third">
+            <aside id="text-2" className="widget widget_text">
+              <h4>OUR HOTELS</h4>
+              <div className="textwidget">
+                <div className="main_title">
+                  <p>
+                    Our stylish fully serviced apartments are perfect for either business or pleasure. We are offering short term and long term accommodation for the
+                    discerning business professionals, holiday-makers, house movers, families, couples and friends.
+                  </p>
+                </div>
+                <div className="row hotels-row">
+                  <div className="col-lg-6 nopadding features-intro-img"></div>
+                </div>
+              </div>
+            </aside>
+          </div>
+          <div className="column one-third">
+            <aside id="text-3" className="widget widget_text">
+              <h4>FOR RESERVATION</h4>
+              <div className="textwidget">
+                <div className="row">
+                  <div className="col-md-4"></div>
+                </div>
+                <div className="row">
+                  <div className="col-md-12">
+                    <div id="social_footer">
+                      <div className="row justify-content-md-center text-center">
+                        <div className="col-md-12">
+                          <strong>
+                            <a id="phone" href="tel://982122245080/">
+                              +98 21 2224 5080-2
+                            </a>
+                          </strong>
+                        </div>
+                        <div>
+                          <a href="tel: +989121002009">
+                            <strong>+989121002009&nbsp;&nbsp;</strong>
+                          </a>
+                        </div>
+                        <div></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <p>
+                  <strong>
+                    <a href="mailto:melalhotel@gmail.com">&nbsp;melalhotel@gmail.com</a>
+                  </strong>
+                </p>
+              </div>
+            </aside>
+          </div>
+          <div className="column one-third">
+            <aside id="text-4" className="widget widget_text">
+              <h4>SOME GOOD REASONS</h4>
+              <div className="textwidget">
+                <div>
+                  <div id="services" className="container margin_60">
+                    <div className="main_title">
+                      <p>Providing a greater space, flexibility and privacy are not always possible in an ordinary hotel room.</p>
+                    </div>
+                  </div>
+                </div>
+                <div id="carouselExampleIndicators" className="container carousel slide py-5" data-ride="carousel">
+                  <div className="shadowTop mx-2"></div>
+                </div>
+              </div>
+            </aside>
+          </div>
         </div>
       </div>
-      <div className="wrap footer-base">
-        <p>{t.rights}</p>
-        <button type="button" className="btn btn-quiet" onClick={toggle}>
-          {t.lang}
-        </button>
+      <div className="footer_copy">
+        <div className="container">
+          <div className="column one">
+            <a id="back_to_top" className="footer_button" href="/" aria-label="Back to top">
+              <LegacyIcon name="icon-up-open-big" />
+            </a>
+            <div className="copyright">© 2021 Melal by apweb.ir | All Rights Reserved | Powered by Apweb</div>
+            <ul className="social">
+              {(
+                [
+                  ["skype", "Skype", "icon-skype"],
+                  ["facebook", "Facebook", "icon-facebook"],
+                  ["twitter", "Twitter", "icon-twitter"],
+                  ["vimeo", "Vimeo", "icon-vimeo"],
+                  ["youtube", "YouTube", "icon-play"],
+                  ["flickr", "Flickr", "icon-flickr"],
+                  ["linkedin", "LinkedIn", "icon-linkedin"],
+                ] as const
+              ).map(([cls, title, icon]) => (
+                <li key={cls} className={cls}>
+                  <a href="#" title={title}>
+                    <LegacyIcon name={icon} />
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
       </div>
     </footer>
+  );
+}
+
+/** Header + title band + content + footer, on the theme's page structure. */
+export function AppShell({ children }: { children: React.ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const { user } = useCurrentUserState();
+  const { locale } = useI18n();
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  useLegacyChrome(ref, [pathname, user?.id, locale]);
+  return (
+    <div id="Wrapper" ref={ref}>
+      <SiteHeader />
+      <div id="Content" dir={locale === "fa" ? "rtl" : "ltr"}>
+        <div className="content_wrapper clearfix">
+          <div className="sections_group">
+            <div className="entry-content">
+              <div className="section app-section">
+                <div className="section_wrapper">{children}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <SiteFooter />
+    </div>
   );
 }
 

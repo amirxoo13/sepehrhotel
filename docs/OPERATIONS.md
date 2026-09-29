@@ -9,15 +9,20 @@ This app runs as one TanStack Start server. Local development and the tests use 
 - Every room type carries the hotel tariff, so a request is confirmed at once with that rate; reception can correct the nightly rate until check-in.
 - Guests can order only against their own active stay. Checked-out stays cannot place orders. A guest who requested checkout can withdraw the request and stay on.
 - Coffee-shop items are stored with department `COFFEE_SHOP`. Water is `HOUSEKEEPING`. Front-desk requests (wake-up call, taxi, special request) are handled by reception.
+- A room put into MAINTENANCE, OUT_OF_SERVICE or BLOCKED while a guest is in house keeps that status at checkout (only an ordinary occupied room goes to CLEANING); housekeeping still gets the checkout-clean task.
 - A cancelled order does not insert a folio line. Delivery is refused while a non-complimentary item has no price; the department (housekeeping included) can price it first.
 - Checkout is refused while the folio balance is positive. There is no override permission in the seeded roles.
 - Money columns are 64-bit integers (toman); a full house for months does not overflow.
 - Notifications are rows. The live channel is server-sent events that poll those rows every three seconds, because pooled Postgres cannot keep `LISTEN/NOTIFY`. Each stream ends itself after 55 seconds (the Vercel Function it runs in has a hard time limit) and the browser reconnects; while disconnected the screen says so and refreshes from the database every 12 seconds.
 - Sign-in and sign-up attempts are rate-limited in the database (Better Auth's `rateLimit` table), so the limit holds across every server instance.
 
-## Home page
+## Look of the site
 
-`/` is the hotel's former page from the Melal Group site, served from the saved copy in `old-site/` (see README): same markup, theme stylesheets and photographs; English, left-to-right, without the app shell. Its links go to this site's pages (About us → `/hotel`, Contact us → `/contact`, each room box → `/rooms`, the search box → `/search`, which searches room types, facilities and policies from the database). Two things are still as on the old page and need the owner's decision: the seven footer social icons link to `#` (the old page had no addresses either), and the copyright line reads as it did there. One CSS background image the browser did not save (`home_lawyer_section.jpg`) is still loaded from the old host.
+`/` is the hotel's former page from the Melal Group site, served from the saved copy in `old-site/` (see README): same markup, theme stylesheets and photographs; English, left-to-right, without the app shell. Its links go to this site's pages (About us → `/hotel`, Contact us → `/contact`, each room box → `/rooms`, the search box → `/search`, which searches room types, facilities and policies from the database).
+
+Every other page renders on the same theme stylesheets, inside the old page's header (logo, menu, search icon), its title band and its footer, produced by `AppShell` in `src/components/hotel/shell.tsx` with the same markup and classes as the saved page. The menu carries this site's pages, a "Reserve" entry, an "Account" sub-menu (My stay, Operations for staff, Sign out) and the language switch; the header and footer stay left-to-right and English like the home page, the content follows the chosen language. The app's own components (`src/styles.css`) use the home page's palette: beige `#f0e7d8` and peach `#eaccbb` panels, tan `#e2c8a1` labels, brown `#99713a` bars, `#825339` links and buttons, Arial.
+
+Two things are still as on the old page and need the owner's decision: the seven footer social icons link to `#` (the old page had no addresses either), and the copyright line reads as it did there. One CSS background image the browser did not save (`home_lawyer_section.jpg`) is still loaded from the old host.
 
 ## Not connected
 
