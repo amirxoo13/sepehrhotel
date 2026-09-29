@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from "react";
 import { authClient } from "./client";
 
 /** Normalized user shape used across the app. */
@@ -26,18 +27,22 @@ export type CurrentUserState = {
  */
 export function useCurrentUserState(): CurrentUserState {
   const { data, isPending } = authClient.useSession();
-  const user = data?.user;
-  return {
-    user: user
-      ? {
-          id: user.id,
-          displayName: user.name ?? null,
-          primaryEmail: user.email ?? null,
-          profileImageUrl: user.image ?? null,
-        }
-      : null,
-    isPending,
-  };
+  // The server always renders "loading"; the first client render must match
+  // it (a session already cached in the browser would otherwise break hydration).
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const id = data?.user?.id;
+  const name = data?.user?.name ?? null;
+  const email = data?.user?.email ?? null;
+  const image = data?.user?.image ?? null;
+  // One stable object per signed-in identity: effects that depend on `user`
+  // must not re-run on every render (they did, and reloaded in a loop).
+  const user = useMemo<AppUser | null>(
+    () => (id ? { id, displayName: name, primaryEmail: email, profileImageUrl: image } : null),
+    [id, name, email, image],
+  );
+  if (!mounted) return { user: null, isPending: true };
+  return { user, isPending };
 }
 
 /**
