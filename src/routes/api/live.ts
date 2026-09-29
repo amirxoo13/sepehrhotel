@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { LIVE_HEARTBEAT_MS, LIVE_POLL_MS, streamShouldEnd } from "@/lib/hotel/live-plan";
 
 /**
- * Server-sent events: new notifications for the signed-in user.
+ * Server-sent events: new notifications for the signed-in user (cookie session).
  *
  * Runs as a Vercel Function, which is terminated at its maximum duration, so a
  * stream ends itself after LIVE_STREAM_MAX_MS with an `end` event and the
@@ -15,9 +15,7 @@ export const Route = createFileRoute("/api/live")({
       GET: async ({ request }) => {
         const { getSessionUser } = await import("@/lib/auth/verify.server");
         const { liveRoles, liveSince } = await import("@/lib/hotel/service.server");
-        const header = request.headers.get("authorization");
-        const token = header?.toLowerCase().startsWith("bearer ") ? header.slice(7).trim() : undefined;
-        const user = await getSessionUser(token);
+        const user = await getSessionUser();
         if (!user) return new Response("Unauthorized", { status: 401 });
         const roles: string[] = await liveRoles(user.id);
         let last = Number(new URL(request.url).searchParams.get("after") ?? "0");
@@ -30,14 +28,6 @@ export const Route = createFileRoute("/api/live")({
         let inFlight = false;
         const stream = new ReadableStream({
           start(controller) {
-            const send = (text: string) => {
-              if (closed) return;
-              try {
-                controller.enqueue(encoder.encode(text));
-              } catch {
-                stop();
-              }
-            };
             const stop = () => {
               if (closed) return;
               closed = true;
@@ -47,6 +37,14 @@ export const Route = createFileRoute("/api/live")({
                 controller.close();
               } catch {
                 /* already closed */
+              }
+            };
+            const send = (text: string) => {
+              if (closed) return;
+              try {
+                controller.enqueue(encoder.encode(text));
+              } catch {
+                stop();
               }
             };
             const tick = async () => {

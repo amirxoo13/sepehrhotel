@@ -1,23 +1,11 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { authClient } from "@/lib/auth/client";
-import { rememberBearerToken } from "@/lib/auth/bearer-storage";
 import { hotelMessage, useI18n } from "@/lib/i18n";
 
 export const Route = createFileRoute("/login")({
   component: LoginPage,
 });
-
-/** Live preview only — deployed, the HttpOnly cookie is the session (see bearer-storage.ts). */
-function keepToken(response: Response) {
-  let storage: Storage | undefined;
-  try {
-    storage = window.sessionStorage;
-  } catch {
-    storage = undefined;
-  }
-  rememberBearerToken(response, window.location.hostname, storage);
-}
 
 function LoginPage() {
   const { t } = useI18n();
@@ -34,11 +22,10 @@ function LoginPage() {
     setBusy(true);
     setError(null);
     try {
-      const options = { onSuccess: (ctx: { response: Response }) => keepToken(ctx.response) };
       const result =
         mode === "up"
-          ? await authClient.signUp.email({ email, password, name: name || email }, options)
-          : await authClient.signIn.email({ email, password }, options);
+          ? await authClient.signUp.email({ email, password, name: name || email })
+          : await authClient.signIn.email({ email, password });
       if (result.error) throw new Error(result.error.message || "HOTEL:unknown");
       await authClient.getSession();
       await navigate({ to: "/stay" });
@@ -87,10 +74,6 @@ function LoginPage() {
         <button type="button" className="btn btn-quiet mt-2 w-full" onClick={() => setMode(mode === "up" ? "in" : "up")}>
           {mode === "up" ? t.haveAccount : t.createAccount}
         </button>
-        {/* Google / X sign-in federates through the Grok auth broker, whose shared
-            preview client only accepts *.grok-sandbox.com callbacks; on the
-            deployed site those buttons could never complete. Re-add them once
-            the hotel has its own OAuth client configured in Better Auth. */}
       </div>
     </main>
   );

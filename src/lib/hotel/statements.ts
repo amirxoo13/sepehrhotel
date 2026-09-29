@@ -197,7 +197,10 @@ export function confirmReservationSql(input: {
                nightly_rate_toman = $3,
                updated_at = now()
          where id = $1
-           and status = 'PENDING'
+           -- a PENDING request is confirmed with its rate; a CONFIRMED one
+           -- (every room type carries a tariff, so requests are confirmed at
+           -- once) can still have its rate corrected until check-in
+           and status in ('PENDING', 'CONFIRMED')
         returning id, code, user_id, room_id
       ),
       audited as (
@@ -585,9 +588,12 @@ export function transitionOrderSql(input: {
             when 'ACCEPTED' then 'ORDER_ACCEPTED'
             when 'PREPARING' then 'ORDER_PREPARING'
             when 'READY' then 'ORDER_READY'
+            when 'DELIVERING' then 'ORDER_DELIVERING'
             when 'DELIVERED' then 'ORDER_DELIVERED'
             when 'COMPLETED' then 'ORDER_DELIVERED'
-            else 'ORDER_ACCEPTED'
+            when 'CANCELLED' then 'ORDER_CANCELLED'
+            when 'REJECTED' then 'ORDER_REJECTED'
+            else 'ORDER_UPDATED'
           end,
           'Order ' || upd.code || ' · ' || $4,
           'سفارش ' || upd.code || ' · ' || $4,

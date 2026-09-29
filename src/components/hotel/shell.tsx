@@ -1,7 +1,7 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { Menu, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { getBearerToken, signOut } from "@/lib/auth/client";
+import { signOut } from "@/lib/auth/client";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { getPublicHotel, getSessionContext } from "@/lib/hotel/api";
 import { nextReconnectDelay } from "@/lib/hotel/live-plan";
@@ -282,8 +282,6 @@ export function useLiveRefresh(enabled: boolean, refresh: () => void) {
       if (stop) return;
       controller = new AbortController();
       const headers = new Headers({ Accept: "text/event-stream" });
-      const token = getBearerToken();
-      if (token) headers.set("Authorization", `Bearer ${token}`);
       let endedNormally = false;
       try {
         const response = await fetch(`/api/live?after=${after}`, {

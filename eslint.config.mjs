@@ -40,6 +40,12 @@ export default tseslint.config(
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
       ],
       "@typescript-eslint/no-explicit-any": "off",
+      // service.server.ts is untyped legacy output kept under @ts-nocheck with
+      // an explanation; every other file is fully type-checked.
+      "@typescript-eslint/ban-ts-comment": [
+        "error",
+        { "ts-nocheck": "allow-with-description", minimumDescriptionLength: 10 },
+      ],
     },
   },
   // Disable rules that conflict with Prettier formatting.

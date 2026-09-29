@@ -488,6 +488,16 @@ export const assignRole = createServerFn({ method: "POST" })
     return out(staffAssignRole(context.userId, data.userId, data.role, data.grant));
   });
 
+export const resetUserPassword = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: unknown) =>
+    parse(z.object({ userId: z.string().min(1).max(80), newPassword: z.string().min(8).max(128) }), input),
+  )
+  .handler(async ({ context, data }) => {
+    const { staffResetPassword } = await svc();
+    return out(staffResetPassword(context.userId, data.userId, data.newPassword));
+  });
+
 export const getAudit = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {

@@ -23,6 +23,7 @@ import {
   noShowReservation,
   publishAnnouncement,
   recordPayment,
+  resetUserPassword,
   setMediaUrl,
   setOrderPrice,
   staffCancelReservation,
@@ -241,7 +242,7 @@ function OpsPage() {
                     {reservation.room_number ? ` · ${reservation.room_number}` : ""}
                   </p>
                   <p>{money(reservation.nightly_rate_toman, locale)}</p>
-                  {reservation.status === "PENDING" && can("reservation.update") ? (
+                  {(reservation.status === "PENDING" || reservation.status === "CONFIRMED") && can("reservation.update") ? (
                     <div className="flex flex-wrap gap-2">
                       <input
                         className="field"
@@ -558,6 +559,8 @@ function Admin({
   const { t, locale } = useI18n();
   const [targetId, setTargetId] = useState("");
   const [role, setRole] = useState("RECEPTION");
+  const [resetId, setResetId] = useState("");
+  const [resetPassword, setResetPassword] = useState("");
   const [payStay, setPayStay] = useState("");
   const [payAmount, setPayAmount] = useState("");
   const [announceEn, setAnnounceEn] = useState("");
@@ -602,6 +605,41 @@ function Admin({
             </li>
           ))}
         </ul>
+      </form>
+      <form
+        className="card grid gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!resetId || resetPassword.length < 8) return;
+          void act(async () => {
+            await resetUserPassword({ data: { userId: resetId, newPassword: resetPassword } });
+            setResetPassword("");
+          });
+        }}
+      >
+        <h2 className="text-2xl">{t.resetPassword}</h2>
+        <p className="muted text-sm">{t.resetPasswordNote}</p>
+        <select required value={resetId} onChange={(e) => setResetId(e.target.value)} aria-label={t.pickAccount}>
+          <option value="">{t.pickAccount}</option>
+          {directory.map((person) => (
+            <option key={person.id} value={person.id}>
+              {person.name} · {person.email}
+            </option>
+          ))}
+        </select>
+        <input
+          type="password"
+          required
+          minLength={8}
+          autoComplete="new-password"
+          value={resetPassword}
+          onChange={(e) => setResetPassword(e.target.value)}
+          aria-label={t.newPassword}
+          placeholder={t.newPassword}
+        />
+        <button className="btn" disabled={busy}>
+          {t.resetPassword}
+        </button>
       </form>
       <form
         className="card grid gap-2"

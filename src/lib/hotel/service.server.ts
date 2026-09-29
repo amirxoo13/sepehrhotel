@@ -1,4 +1,4 @@
-// @ts-nocheck
+// @ts-nocheck -- legacy untyped service module (bundler output restored as source); the SQL it runs is covered by the PGLite integration tests
 import { randomBytes } from "node:crypto";
 import { getSql } from "@/lib/db";
 import {
@@ -899,6 +899,10 @@ export async function staffUpdateRoom(userId, input) {
 	} else need(actor, "room.update");
 	if (input.roomType) {
 		need(actor, "room.update");
+		// Validate first: an unknown code would otherwise surface as a raw
+		// foreign-key error instead of a validation message.
+		const type = await sql`select code from room_types where code = ${input.roomType}`;
+		if (!type[0]) throw hotel("validation");
 		await sql`update rooms set room_type_code = ${input.roomType}, type_assignment = 'staff_verified' where id = ${input.roomId}`;
 	}
 	if (input.capacity) {
@@ -990,7 +994,6 @@ export async function staffTransition(userId, orderId, to) {
 		await sql`
       update parking_requests
          set status = case
-           when ${to} = 'ACCEPTED' then 'ACCEPTED'
            when ${to} = 'DELIVERED' then 'PARKED'
            when ${to} = 'COMPLETED' then 'CLOSED'
            when ${to} in ('CANCELLED','REJECTED') then 'CANCELLED'
@@ -998,6 +1001,11 @@ export async function staffTransition(userId, orderId, to) {
        where order_id = ${orderId}
     `;
 	}
+	// Accepting a parking order marks the request accepted so the parking desk
+	// sees it (the earlier version of this branch was unreachable).
+	if (to === "ACCEPTED") await sql`
+      update parking_requests set status = 'ACCEPTED' where order_id = ${orderId} and status = 'REQUESTED'
+    `;
 	log("order.transition", {
 		userId,
 		id: orderId,
@@ -1415,6 +1423,33 @@ export async function staffAnnounce(userId, en, fa) {
        and ${en.trim()} <> ''
   `;
 	return { ok: true };
+}
+export async function staffResetPassword(userId, targetUserId, newPassword) {
+	const { sql, actor } = await staff(userId, "staff.assign");
+	const password = String(newPassword ?? "");
+	if (password.length < 8 || password.length > 128) throw hotel("password_short");
+	const target = String(targetUserId ?? "").trim();
+	const users = await sql`select id from "user" where id = ${target}`;
+	if (!users[0]) throw hotel("not_found");
+	// Only a super admin may reset another administrator's password.
+	const targetRoles = (await sql`select role_code from user_roles where user_id = ${target}`).map((r) => r.role_code);
+	const targetIsAdmin = targetRoles.includes("HOTEL_ADMIN") || targetRoles.includes("SUPER_ADMIN");
+	if (targetIsAdmin && target !== userId && !actor.roles.includes("SUPER_ADMIN")) throw hotel("forbidden");
+	// Better Auth owns the credential hash and the session rows: hash with its
+	// own algorithm, store on the credential account, and sign the user out of
+	// every device so a stolen session cannot outlive the reset.
+	const { auth } = await import("@/lib/auth/server");
+	const ctx = await auth.$context;
+	const hash = await ctx.password.hash(password);
+	await ctx.internalAdapter.updatePassword(target, hash);
+	const sessions = await ctx.internalAdapter.listSessions(target);
+	if (sessions.length) await ctx.internalAdapter.deleteSessions(sessions.map((s) => s.token));
+	await sql`
+    insert into audit_logs (actor_user_id, action, entity_type, entity_id, new_value)
+    values (${userId}, 'staff.password_reset', 'user', ${target}, ${JSON.stringify({ sessionsRevoked: sessions.length })}::jsonb)
+  `;
+	log("staff.password_reset", { userId, target });
+	return { ok: true, sessionsRevoked: sessions.length };
 }
 export async function liveRoles(userId) {
 	const sql = await db();
