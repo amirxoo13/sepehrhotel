@@ -1,4 +1,4 @@
-import { Link, useRouterState } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { Menu, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { signOut } from "@/lib/auth/client";
@@ -35,19 +35,10 @@ const links = [
 export function SiteHeader() {
   const { t, toggle } = useI18n();
   const { user } = useCurrentUserState();
-  const pathname = useRouterState({ select: (state) => state.location.pathname });
   const [open, setOpen] = useState(false);
   const [staff, setStaff] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
   const closeRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 40);
-    onScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
 
   useEffect(() => {
     if (!user) {
@@ -88,24 +79,29 @@ export function SiteHeader() {
     </Link>
   );
 
-  const overMedia = pathname === "/" && !scrolled && !open;
-
   return (
-    <header className={overMedia ? "site-header over-media" : "site-header"}>
+    <header className="site-header">
       <div className="wrap site-bar">
-        <Link to="/" className="brand">
+        <a href="/" className="brand">
           <span className="brand-mark" aria-hidden="true" />
           <span>
             <span className="brand-kicker">{t.city}</span>
             <span className="brand-name">{t.brand}</span>
           </span>
-        </Link>
+        </a>
         <nav className="desk-nav" aria-label={t.navHome}>
-          {links.map((item) => (
-            <Link key={item.to} to={item.to} className="nav-link" activeOptions={{ exact: item.to === "/" }} activeProps={{ "data-status": "active" }}>
-              {t[item.label]}
-            </Link>
-          ))}
+          {links.map((item) =>
+            item.to === "/" ? (
+              // The home page is the old page on its own stylesheets: a full load, not a client-side route change.
+              <a key={item.to} href="/" className="nav-link">
+                {t[item.label]}
+              </a>
+            ) : (
+              <Link key={item.to} to={item.to} className="nav-link" activeProps={{ "data-status": "active" }}>
+                {t[item.label]}
+              </Link>
+            ),
+          )}
         </nav>
         <div className="site-tools">
           <button type="button" className="btn btn-quiet" onClick={toggle}>
@@ -140,11 +136,17 @@ export function SiteHeader() {
               <X size={18} aria-hidden="true" />
               {t.close}
             </button>
-            {links.map((item) => (
-              <Link key={item.to} to={item.to} className="nav-link" onClick={() => setOpen(false)}>
-                {t[item.label]}
-              </Link>
-            ))}
+            {links.map((item) =>
+              item.to === "/" ? (
+                <a key={item.to} href="/" className="nav-link">
+                  {t[item.label]}
+                </a>
+              ) : (
+                <Link key={item.to} to={item.to} className="nav-link" onClick={() => setOpen(false)}>
+                  {t[item.label]}
+                </Link>
+              ),
+            )}
             <Link to="/policies" className="nav-link" onClick={() => setOpen(false)}>
               {t.navPolicies}
             </Link>

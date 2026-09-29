@@ -1,9 +1,7 @@
-import { Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useRef, useState, type FormEvent } from "react";
-import { DateField } from "@/components/hotel/dates";
+import { Link } from "@tanstack/react-router";
 import type { getPublicHotel } from "@/lib/hotel/api";
-import { addDays, money, showNumber } from "@/lib/hotel/format";
-import { galleryPhotos, roomPhoto } from "@/lib/hotel/photos";
+import { money } from "@/lib/hotel/format";
+import { roomPhoto } from "@/lib/hotel/photos";
 import { useI18n } from "@/lib/i18n";
 
 export type Hotel = Awaited<ReturnType<typeof getPublicHotel>>;
@@ -52,7 +50,7 @@ export function Crumb({ items }: { items: { to?: "/" | "/rooms" | "/hotel" | "/g
       {items.map((item, index) => (
         <span key={item.label}>
           {index > 0 ? <span aria-hidden="true"> / </span> : null}
-          {item.to ? <Link to={item.to}>{item.label}</Link> : <span>{item.label}</span>}
+          {item.to === "/" ? <a href="/">{item.label}</a> : item.to ? <Link to={item.to}>{item.label}</Link> : <span>{item.label}</span>}
         </span>
       ))}
     </nav>
@@ -148,191 +146,5 @@ export function Offerings({ data }: { data: Hotel }) {
         );
       })}
     </div>
-  );
-}
-
-export function HomeStory({ data }: { data: Hotel }) {
-  const { t, locale } = useI18n();
-  const { fact, setting, policy } = useHotelBits(data);
-  const navigate = useNavigate();
-  const film = useRef<HTMLVideoElement>(null);
-  const [checkIn, setCheckIn] = useState(data.today);
-  const [checkOut, setCheckOut] = useState(addDays(data.today, 1));
-  const [guests, setGuests] = useState(1);
-  const [error, setError] = useState<string | null>(null);
-  const lat = Number(setting("geo_lat"));
-  const lng = Number(setting("geo_lng"));
-  const hasPin = Number.isFinite(lat) && Number.isFinite(lng);
-  const announcement = setting(locale === "fa" ? "announcement_fa" : "announcement_en");
-  const about = fact("about");
-  const lobby = fact("lobby");
-  const breakfast = policy("breakfast");
-  const address = setting(locale === "fa" ? "address_fa" : "address_en");
-  const phone = fact("phone");
-  const highlights = ((data.offerings ?? []) as Offering[]).filter((item) => item.highlight && item.offered);
-  const jsonLd = {
-    "@context": "https://schema.org",
-    "@type": "Hotel",
-    name: "Sepehr Apartment Hotel",
-    alternateName: "هتل آپارتمان سپهر",
-    telephone: "+98-21-22245050",
-    url: "http://melalgroup.com/index.php/sepehr-apartment-hotel/",
-    address: {
-      "@type": "PostalAddress",
-      streetAddress: "No. 11, Salour Alley, Dr. Hesabi crossroad, Fereshteh Street",
-      addressLocality: "Tehran",
-      addressCountry: "IR",
-    },
-    numberOfRooms: data.roomCount,
-    ...(hasPin ? { geo: { "@type": "GeoCoordinates", latitude: lat, longitude: lng } } : {}),
-  };
-
-  function search(event: FormEvent) {
-    event.preventDefault();
-    if (!checkIn || !checkOut || checkOut <= checkIn) {
-      setError(t.errors.invalid_dates);
-      return;
-    }
-    setError(null);
-    void navigate({ to: "/book", search: { checkIn, checkOut, guests } });
-  }
-
-  useEffect(() => {
-    const node = film.current;
-    if (!node) return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) node.pause();
-  }, []);
-
-  return (
-    <main id="main">
-      <section className="hero-film">
-        <video
-          ref={film}
-          autoPlay
-          muted
-          loop
-          playsInline
-          poster="/media/poster.jpg"
-          src="/media/hero.mp4"
-          aria-hidden="true"
-        />
-        <div className="hero-veil" />
-        <div className="wrap hero-copy">
-          <p className="eyebrow">{t.heroKicker}</p>
-          <h1>{t.heroTitle}</h1>
-          <p className="lede">{t.heroBody}</p>
-          <div className="hero-actions">
-            <a className="btn btn-light" href="#reserve">
-              {t.reserve}
-            </a>
-            <Link to="/rooms" className="btn btn-light">
-              {t.explore}
-            </Link>
-          </div>
-        </div>
-      </section>
-      {announcement ? <p className="wrap banner">{announcement}</p> : null}
-      <form id="reserve" className="wrap book-band book-float" onSubmit={search}>
-        <DateField label={t.checkIn} value={checkIn} onChange={setCheckIn} min={data.today} required />
-        <DateField label={t.checkOut} value={checkOut} onChange={setCheckOut} min={addDays(checkIn || data.today, 1)} required />
-        <label className="field">
-          {t.guests}
-          <input type="number" min={1} max={8} value={guests} suppressHydrationWarning onChange={(event) => setGuests(Number(event.target.value))} />
-        </label>
-        <button className="btn btn-primary" type="submit">
-          {t.search}
-        </button>
-      </form>
-      {error ? (
-        <p className="wrap danger" role="alert">
-          {error}
-        </p>
-      ) : null}
-
-      <div className="wrap">
-        <section className="chapter split">
-          <div>
-            <h2>{t.introTitle}</h2>
-            <p className="muted">
-              {showNumber(data.roomCount, locale)} {t.rooms40}
-              {phone ? ` · ${phone}` : ""}
-            </p>
-          </div>
-          <div className="prose">
-            {about ? <p>{about}</p> : null}
-            {lobby ? <p>{lobby}</p> : null}
-          </div>
-        </section>
-
-        <section className="chapter">
-          <h2>{t.experienceTitle}</h2>
-          {highlights.length > 0 ? (
-            <div className="highlight-row">
-              {highlights.map((item) => (
-                <span key={item.name_en}>{loc(locale, item.name_en, item.name_fa)}</span>
-              ))}
-            </div>
-          ) : null}
-          <p className="prose">{t.experienceBody}</p>
-        </section>
-
-        <section className="chapter">
-          <div className="split">
-            <h2>{t.roomsTitle}</h2>
-            <p className="muted">{t.roomsLead}</p>
-          </div>
-          <RoomList data={data} />
-        </section>
-
-        <section className="chapter split">
-          <h2>{t.diningTitle}</h2>
-          <div className="prose">
-            {breakfast ? <p>{loc(locale, breakfast.body_en, breakfast.body_fa)}</p> : null}
-            <p>{t.diningCoffee}</p>
-            <Link to="/dining" className="btn">
-              {t.navDining}
-            </Link>
-          </div>
-        </section>
-
-        <section className="chapter">
-          <div className="split">
-            <h2>{t.gallery}</h2>
-            <Link to="/gallery" className="btn">
-              {t.navGallery}
-            </Link>
-          </div>
-          <div className="gallery-strip">
-            {galleryPhotos.slice(0, 8).map((item) => (
-              <img key={item.src} src={item.src} alt={t.brand} />
-            ))}
-          </div>
-        </section>
-
-        {hasPin ? (
-          <section className="chapter">
-            <div className="split">
-              <div>
-                <h2>{t.placeTitle}</h2>
-                <p>{address}</p>
-                <p className="muted">{t.nearMuseum}</p>
-              </div>
-              <MapFrame lat={lat} lng={lng} title={t.mapTitle} />
-            </div>
-          </section>
-        ) : null}
-
-        <section className="chapter split">
-          <h2>{t.finalTitle}</h2>
-          <div className="prose">
-            <p>{t.finalBody}</p>
-            <a className="btn btn-primary" href="#reserve">
-              {t.reserve}
-            </a>
-          </div>
-        </section>
-      </div>
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
-    </main>
   );
 }

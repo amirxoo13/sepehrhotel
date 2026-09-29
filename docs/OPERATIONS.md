@@ -15,6 +15,10 @@ This app runs as one TanStack Start server. Local development and the tests use 
 - Notifications are rows. The live channel is server-sent events that poll those rows every three seconds, because pooled Postgres cannot keep `LISTEN/NOTIFY`. Each stream ends itself after 55 seconds (the Vercel Function it runs in has a hard time limit) and the browser reconnects; while disconnected the screen says so and refreshes from the database every 12 seconds.
 - Sign-in and sign-up attempts are rate-limited in the database (Better Auth's `rateLimit` table), so the limit holds across every server instance.
 
+## Home page
+
+`/` is the hotel's former page from the Melal Group site, served from the saved copy in `old-site/` (see README): same markup, theme stylesheets and photographs; English, left-to-right, without the app shell. Its links go to this site's pages (About us → `/hotel`, Contact us → `/contact`, each room box → `/rooms`, the search box → `/search`, which searches room types, facilities and policies from the database). Two things are still as on the old page and need the owner's decision: the seven footer social icons link to `#` (the old page had no addresses either), and the copyright line reads as it did there. One CSS background image the browser did not save (`home_lawyer_section.jpg`) is still loaded from the old host.
+
 ## Not connected
 
 - Card/online payment gateway: a `GATEWAY` payment is stored as `PENDING_GATEWAY` and does not reduce the balance. **BLOCKED BY EXTERNAL DEPENDENCY** (merchant id, callback URL, provider).
