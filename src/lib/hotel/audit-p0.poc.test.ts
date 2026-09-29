@@ -2,7 +2,7 @@
  * Proof-of-concept tests for the priority-0 audit findings (service layer + SQL).
  *
  * Each test asserts the CORRECT behaviour, so it FAILS while the bug exists.
- * The database is the real schema: migrations 0001..0004 applied to PGLite,
+ * The database is the real schema: migrations 0001..0005 applied to PGLite,
  * exactly as `src/lib/db.ts` does in preview and `scripts/migrate.mjs` does on deploy.
  *
  * Where a service function cannot be imported here (service.server.ts imports
@@ -25,7 +25,7 @@ import {
 async function database() {
   const pg = new PGlite();
   await pg.waitReady;
-  for (const file of ["0001_auth.sql", "0002_hotel.sql", "0003_place.sql", "0004_owner_catalog.sql"]) {
+  for (const file of ["0001_auth.sql", "0002_hotel.sql", "0003_place.sql", "0004_owner_catalog.sql", "0005_audit_fixes.sql"]) {
     await pg.exec(readFileSync(new URL(`../../../migrations/${file}`, import.meta.url), "utf8"));
   }
   await pg.query(
@@ -127,7 +127,7 @@ test("F1b: the operations board sum of open balances must not overflow int4", as
   }
   // Verbatim from service.server.ts opsSnapshot (lines 689-719), the `outstanding` column.
   const board = pg.query(`
-      select (select coalesce(sum(b.balance),0)::int from (
+      select (select coalesce(sum(b.balance),0)::bigint from (
             select
               coalesce((select sum(amount_toman) from folio_items fi where fi.folio_id = f.id and not fi.voided),0)
               - coalesce((select sum(amount_toman) from payments p where p.folio_id = f.id and p.status = 'RECORDED'),0)
@@ -135,6 +135,20 @@ test("F1b: the operations board sum of open balances must not overflow int4", as
               from folios f where f.status = 'OPEN'
          ) b) as outstanding`);
   await assert.doesNotReject(board, "the ops board must render with a full house");
+});
+
+test("F1c: an auto-approved long extension quote must not overflow int4", async () => {
+  const pg = await database();
+  const today = "2026-10-01";
+  const res = await book(pg, { userId: "guest-a", type: "APT_DOUBLE", checkIn: today, checkOut: "2026-10-03", rate: 11_800_000, key: "ext-long", today });
+  const ci = checkInSql({ reservationId: res.id, actorId: "staff-1", today });
+  assert.equal((await pg.query(ci.text, ci.values)).rows.length, 1);
+  const stay = (await pg.query<{ id: number }>(`select id from stays where reservation_id = $1`, [res.id])).rows[0];
+  // 200 more nights at 11.8M = 2,360,000,000 toman.
+  const ext = extendStaySql({ stayId: stay.id, actorId: "guest-a", requestedCheckOut: "2027-04-21", nights: nightsBetween("2026-10-03", "2027-04-21"), nightlyRate: 11_800_000, auto: true });
+  const row = (await pg.query<{ status: string; quoted_amount_toman: number }>(ext.text, ext.values)).rows[0];
+  assert.equal(row.status, "APPROVED");
+  assert.equal(Number(row.quoted_amount_toman), 2_360_000_000);
 });
 
 // ---------------------------------------------------------------------------
@@ -185,7 +199,6 @@ const CLAIM_ADMIN_SQL = `
         update hotel_settings
            set value = $1
          where key = 'bootstrap_admin'
-           and value = ''
            and not exists (
              select 1 from user_roles where role_code in ('HOTEL_ADMIN','SUPER_ADMIN')
            )
@@ -254,6 +267,7 @@ const DECIDE_EXTENSION_SQL = `
            and not exists (select 1 from conflict)
            and req.nightly_rate_toman is not null
            and req.stay_status = 'ACTIVE'
+           and req.requested_check_out > req.check_out
         returning e.id, e.reservation_id, e.stay_id, e.requested_check_out, e.quoted_amount_toman
       ),
       res as (

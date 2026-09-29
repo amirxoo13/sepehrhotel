@@ -171,6 +171,13 @@ export const requestCheckout = createServerFn({ method: "POST" })
     return out(ask(context.userId));
   });
 
+export const cancelCheckoutRequest = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const { cancelCheckoutRequest: withdraw } = await svc();
+    return out(withdraw(context.userId));
+  });
+
 export const listNotifications = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async ({ context }) => {

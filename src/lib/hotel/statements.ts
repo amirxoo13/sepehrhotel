@@ -219,11 +219,19 @@ export function checkInSql(input: { reservationId: number; actorId: string; toda
       with res as (
         select r.*
           from reservations r
+          join rooms rm on rm.id = r.room_id
          where r.id = $1
            and r.status = 'CONFIRMED'
            and r.nightly_rate_toman is not null
            and r.check_in <= $3::date
-         for update
+           -- the room must be sellable and empty: no second in-house stay
+           and rm.status not in ('MAINTENANCE', 'OUT_OF_SERVICE', 'BLOCKED')
+           and not exists (
+             select 1 from stays s
+              where s.room_id = r.room_id
+                and s.status in ('ACTIVE', 'CHECKOUT_PENDING')
+           )
+         for update of r
       ),
       stay_ins as (
         insert into stays (reservation_id, room_id, user_id, status, checked_in_at, checked_in_by)
@@ -296,7 +304,7 @@ export function checkOutSql(input: { stayId: number; actorId: string; allowBalan
       ),
       bal as (
         select
-          coalesce((
+          (coalesce((
             select sum(fi.amount_toman) from folio_items fi
               join folios f on f.id = fi.folio_id
              where f.stay_id = stay.id and fi.voided = false
@@ -306,7 +314,7 @@ export function checkOutSql(input: { stayId: number; actorId: string; allowBalan
             select sum(p.amount_toman) from payments p
               join folios f on f.id = p.folio_id
              where f.stay_id = stay.id and p.status = 'RECORDED'
-          ), 0) as balance
+          ), 0))::bigint as balance
           from stay
       ),
       closed as (
@@ -646,7 +654,7 @@ export function extendStaySql(input: {
           case when $5::boolean and not exists (select 1 from conflict) then 'APPROVED' else
             case when exists (select 1 from conflict) then 'REJECTED' else 'PENDING' end
           end,
-          case when exists (select 1 from conflict) then null else $6 * cardinality(string_to_array($3, ',')) end,
+          case when exists (select 1 from conflict) then null else $6::bigint * cardinality(string_to_array($3, ',')) end,
           case when $5::boolean and not exists (select 1 from conflict) then $2 else null end
           from stay
         returning id, status, reservation_id, stay_id, quoted_amount_toman, requested_check_out
