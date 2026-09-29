@@ -12,7 +12,9 @@
     "db:migrate": "node scripts/migrate.mjs",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test": "node --test scripts/migration-plan.test.mjs && node --experimental-strip-types --test src/lib/hotel/domain.test.ts src/lib/hotel/format.test.ts src/lib/hotel/reservation.integration.test.ts src/lib/hotel/audit-p0.poc.test.ts && node --experimental-transform-types --test src/lib/auth/audit-p1.poc.test.ts src/lib/auth/config.test.ts src/lib/db-source.test.ts src/lib/hotel/rate-limit.test.ts src/lib/hotel/live-plan.test.ts",
+    "test": "node --test scripts/migration-plan.test.mjs && node --experimental-strip-types --test src/lib/hotel/domain.test.ts src/lib/hotel/format.test.ts src/lib/hotel/reservation.integration.test.ts src/lib/hotel/audit-p0.poc.test.ts src/lib/legacy-home.test.ts && node --experimental-transform-types --test src/lib/auth/audit-p1.poc.test.ts src/lib/auth/config.test.ts src/lib/db-source.test.ts src/lib/hotel/rate-limit.test.ts src/lib/hotel/live-plan.test.ts",
+    "legacy:build": "node scripts/legacy-home.mjs",
+    "legacy:compare": "node scripts/legacy-home-compare.mjs",
     "lint": "eslint .",
     "format": "prettier --write ."
   },
@@ -88,7 +90,10 @@
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",
     "globals": "^15.15.0",
+    "pixelmatch": "^5.3.0",
     "playwright": "^1.62.0",
+    "playwright-core": "^1.63.0",
+    "pngjs": "^7.0.0",
     "prettier": "^3.4.0",
     "typescript-eslint": "^8.56.1"
   }

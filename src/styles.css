@@ -82,15 +82,6 @@
     border-bottom: 1px solid var(--color-line);
     backdrop-filter: blur(14px);
   }
-  .site-header.over-media {
-    background: transparent; color: #f6f1e7; border-bottom-color: transparent; backdrop-filter: none;
-  }
-  .site-header.over-media .nav-link,
-  .site-header.over-media .brand,
-  .site-header.over-media .btn,
-  .site-header.over-media .brand-name { color: #f6f1e7; }
-  .site-header.over-media .btn { border-color: rgba(246, 241, 231, 0.55); background: transparent; }
-  .site-header.over-media .brand-kicker { color: #e4d2ae; }
   .page-offset { padding-top: 4.75rem; }
   .site-bar { display: flex; align-items: center; gap: 1rem; min-height: 4.25rem; }
   .brand { display: flex; align-items: center; gap: 0.75rem; text-decoration: none; min-height: 2.75rem; }

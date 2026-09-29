@@ -20,6 +20,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as OpsRouteImport } from './routes/ops'
 import { Route as PoliciesRouteImport } from './routes/policies'
 import { Route as RoomsRouteImport } from './routes/rooms'
+import { Route as SearchRouteImport } from './routes/search'
 import { Route as StayRouteImport } from './routes/stay'
 import { Route as ApiHealthRouteImport } from './routes/api/health'
 import { Route as ApiLiveRouteImport } from './routes/api/live'
@@ -81,6 +82,11 @@ const RoomsRoute = RoomsRouteImport.update({
   path: '/rooms',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SearchRoute = SearchRouteImport.update({
+  id: '/search',
+  path: '/search',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const StayRoute = StayRouteImport.update({
   id: '/stay',
   path: '/stay',
@@ -119,6 +125,7 @@ export interface FileRoutesByFullPath {
   '/ops': typeof OpsRoute
   '/policies': typeof PoliciesRoute
   '/rooms': typeof RoomsRoute
+  '/search': typeof SearchRoute
   '/stay': typeof StayRoute
   '/api/health': typeof ApiHealthRoute
   '/api/live': typeof ApiLiveRoute
@@ -137,6 +144,7 @@ export interface FileRoutesByTo {
   '/ops': typeof OpsRoute
   '/policies': typeof PoliciesRoute
   '/rooms': typeof RoomsRoute
+  '/search': typeof SearchRoute
   '/stay': typeof StayRoute
   '/api/health': typeof ApiHealthRoute
   '/api/live': typeof ApiLiveRoute
@@ -156,6 +164,7 @@ export interface FileRoutesById {
   '/ops': typeof OpsRoute
   '/policies': typeof PoliciesRoute
   '/rooms': typeof RoomsRoute
+  '/search': typeof SearchRoute
   '/stay': typeof StayRoute
   '/api/health': typeof ApiHealthRoute
   '/api/live': typeof ApiLiveRoute
@@ -176,6 +185,7 @@ export interface FileRouteTypes {
     | '/ops'
     | '/policies'
     | '/rooms'
+    | '/search'
     | '/stay'
     | '/api/health'
     | '/api/live'
@@ -194,6 +204,7 @@ export interface FileRouteTypes {
     | '/ops'
     | '/policies'
     | '/rooms'
+    | '/search'
     | '/stay'
     | '/api/health'
     | '/api/live'
@@ -212,6 +223,7 @@ export interface FileRouteTypes {
     | '/ops'
     | '/policies'
     | '/rooms'
+    | '/search'
     | '/stay'
     | '/api/health'
     | '/api/live'
@@ -231,6 +243,7 @@ export interface RootRouteChildren {
   OpsRoute: typeof OpsRoute
   PoliciesRoute: typeof PoliciesRoute
   RoomsRoute: typeof RoomsRoute
+  SearchRoute: typeof SearchRoute
   StayRoute: typeof StayRoute
   ApiHealthRoute: typeof ApiHealthRoute
   ApiLiveRoute: typeof ApiLiveRoute
@@ -317,6 +330,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RoomsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/search': {
+      id: '/search'
+      path: '/search'
+      fullPath: '/search'
+      preLoaderRoute: typeof SearchRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/stay': {
       id: '/stay'
       path: '/stay'
@@ -367,6 +387,7 @@ const rootRouteChildren: RootRouteChildren = {
   OpsRoute: OpsRoute,
   PoliciesRoute: PoliciesRoute,
   RoomsRoute: RoomsRoute,
+  SearchRoute: SearchRoute,
   StayRoute: StayRoute,
   ApiHealthRoute: ApiHealthRoute,
   ApiLiveRoute: ApiLiveRoute,

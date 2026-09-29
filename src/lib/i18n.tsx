@@ -157,6 +157,12 @@ const dict = {
     confirmBody: "شماره را نگه دارید. اگر نرخ شبانه ثبت شده باشد، رزرو با همان مبلغ تأیید می‌شود. پرداخت آنلاین وصل نیست.",
     printPage: "چاپ",
     opsClosed: "این میز برای کارکنان هتل است.",
+    searchTitle: "جستجو",
+    searchFor: "نتایج برای",
+    searchNone: "چیزی پیدا نشد. اتاق‌ها، امکانات و قوانین هتل جستجو می‌شوند.",
+    searchRooms: "اتاق‌ها",
+    searchOfferings: "امکانات و خدمات",
+    searchPolicies: "قوانین",
     markRead: "خواندم",
     timeLabel: "ساعت",
     complimentary: "بدون هزینه ثبت‌شده",
@@ -381,6 +387,12 @@ const dict = {
     confirmBody: "Keep the number. If a nightly rate is on file, the reservation is confirmed at that amount. Online payment is not connected.",
     printPage: "Print",
     opsClosed: "This desk is for hotel staff.",
+    searchTitle: "Search",
+    searchFor: "Results for",
+    searchNone: "Nothing found. Rooms, facilities and hotel policies are searched.",
+    searchRooms: "Rooms",
+    searchOfferings: "Facilities and services",
+    searchPolicies: "Policies",
     markRead: "Mark read",
     timeLabel: "Time",
     complimentary: "No charge on file",
@@ -457,17 +469,26 @@ export type Copy = (typeof dict)["en"];
 
 const Ctx = createContext<{ locale: Locale; t: Copy; toggle: () => void; setLocale: (locale: Locale) => void } | null>(null);
 
-export function LocaleProvider({ children }: { children: ReactNode }) {
+/**
+ * `documentDirection: false` leaves `<html lang dir>` alone — the home page is
+ * the hotel's former English, left-to-right page and sets its own.
+ */
+export function LocaleProvider({ children, documentDirection = true }: { children: ReactNode; documentDirection?: boolean }) {
   const [locale, setLocale] = useState<Locale>("fa");
   useEffect(() => {
     const saved = window.localStorage.getItem("sepehr-locale");
     if (saved === "en" || saved === "fa") setLocale(saved);
   }, []);
   useEffect(() => {
-    document.documentElement.lang = locale === "fa" ? "fa" : "en";
-    document.documentElement.dir = locale === "fa" ? "rtl" : "ltr";
+    if (documentDirection) {
+      document.documentElement.lang = locale === "fa" ? "fa" : "en";
+      document.documentElement.dir = locale === "fa" ? "rtl" : "ltr";
+    } else {
+      document.documentElement.lang = "en-US";
+      document.documentElement.dir = "ltr";
+    }
     window.localStorage.setItem("sepehr-locale", locale);
-  }, [locale]);
+  }, [locale, documentDirection]);
   const value = useMemo(
     () => ({
       locale,
