@@ -16,6 +16,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import pg from "pg";
+import { normalizeDatabaseUrl } from "./database-url.mjs";
 import { migrationDecision, pendingMigrations } from "./migration-plan.mjs";
 
 const decision = migrationDecision(process.env);
@@ -23,7 +24,7 @@ if (!decision.run) {
   console.log(`[migrate] ${decision.reason}`);
   process.exit(0);
 }
-const databaseUrl = process.env.DATABASE_URL;
+const databaseUrl = normalizeDatabaseUrl(process.env.DATABASE_URL);
 
 const migrationsDir = join(dirname(fileURLToPath(import.meta.url)), "..", "migrations");
 

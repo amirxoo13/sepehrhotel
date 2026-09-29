@@ -1,3 +1,4 @@
+import { normalizeDatabaseUrl } from "../../scripts/database-url.mjs";
 import { pendingMigrations } from "../../scripts/migration-plan.mjs";
 import { resolveDbSource, type DbSource } from "./db-source";
 
@@ -5,10 +6,10 @@ export type { DbSource };
 
 // An empty/whitespace DATABASE_URL (an easy misconfig in deploy UIs) must mean
 // "unset" — otherwise production would silently run on the PGLite fallback.
+// `sslmode=require` is spelled out as `verify-full` (same behaviour, no
+// per-cold-start warning from `pg`; see scripts/database-url.mjs).
 const processEnv = typeof process !== "undefined" ? process.env : {};
-const rawDatabaseUrl = processEnv.DATABASE_URL;
-const databaseUrl =
-  rawDatabaseUrl && rawDatabaseUrl.trim() ? rawDatabaseUrl : undefined;
+const databaseUrl = normalizeDatabaseUrl(processEnv.DATABASE_URL);
 
 /**
  * Active backend: real **Neon** when `DATABASE_URL` is set (deployed / configured
