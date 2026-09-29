@@ -556,7 +556,7 @@ function Admin({
   act: (work: () => Promise<unknown>) => Promise<void>;
 }) {
   const { t, locale } = useI18n();
-  const [email, setEmail] = useState("");
+  const [targetId, setTargetId] = useState("");
   const [role, setRole] = useState("RECEPTION");
   const [payStay, setPayStay] = useState("");
   const [payAmount, setPayAmount] = useState("");
@@ -571,12 +571,21 @@ function Admin({
         className="card grid gap-2"
         onSubmit={(e) => {
           e.preventDefault();
-          void act(() => assignRole({ data: { email, role, grant: true } }));
+          if (!targetId) return;
+          void act(() => assignRole({ data: { userId: targetId, role, grant: true } }));
         }}
       >
         <h2 className="text-2xl">{locale === "fa" ? "نقش کارکنان" : "Staff role"}</h2>
-        <p className="muted text-sm">{locale === "fa" ? "شخص باید قبلاً حساب ساخته باشد." : "The person must already have an account."}</p>
-        <input required type="email" value={email} onChange={(e) => setEmail(e.target.value)} aria-label={t.email} />
+        <p className="muted text-sm">{locale === "fa" ? "شخص باید قبلاً حساب ساخته باشد. حساب را از فهرست انتخاب کنید و نام، ایمیل و تاریخ ثبت‌نام را با شخص واقعی تطبیق دهید." : "The person must already have an account. Pick it from the list and check the name, e-mail and sign-up date against the real person."}</p>
+        <select required value={targetId} onChange={(e) => setTargetId(e.target.value)} aria-label={t.pickAccount}>
+          <option value="">{t.pickAccount}</option>
+          {directory.map((person) => (
+            <option key={person.id} value={person.id}>
+              {person.name} · {person.email}
+              {person.email_verified ? "" : ` · ${t.unverifiedEmail}`} · {t.accountCreated} {showDate(String(person.created_at).slice(0, 10), locale)}
+            </option>
+          ))}
+        </select>
         <select value={role} onChange={(e) => setRole(e.target.value)}>
           {["RECEPTION", "HOUSEKEEPING", "LAUNDRY", "KITCHEN", "COFFEE_SHOP", "PARKING", "MAINTENANCE", "ACCOUNTING", "HOTEL_ADMIN"].map((item) => (
             <option key={item}>{item}</option>
@@ -588,7 +597,8 @@ function Admin({
         <ul className="text-sm">
           {directory.map((person) => (
             <li key={person.id}>
-              {person.email} · {person.roles || "—"}
+              {person.name} · {person.email}
+              {person.email_verified ? "" : ` · ${t.unverifiedEmail}`} · {person.roles || "—"}
             </li>
           ))}
         </ul>
@@ -807,6 +817,6 @@ type ParkRow = { id: number; plate: string; vehicle_type: string | null; status:
 type TicketRow = { id: number; issue_code: string; description: string | null; status: string; room_number: number };
 type ExtRow = { id: number; status: string; requested_check_out: string; check_out: string; code: string; room_number: number };
 type AuditRow = { id: number; action: string; entity_type: string; entity_id: string | null };
-type DirRow = { id: string; email: string; roles: string };
+type DirRow = { id: string; name: string; email: string; email_verified: boolean; created_at: string; roles: string };
 type SvcRow = { id: number; name_en: string; name_fa: string; price_toman: number | null };
 type MediaRow = { id: number; title_en: string; title_fa: string; url: string | null };

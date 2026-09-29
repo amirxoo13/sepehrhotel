@@ -261,12 +261,18 @@ export async function claimAdmin(userId) {
 	limit(`claim:${userId}`, 5, 6e4);
 	const sql = await db();
 	await bootstrapUser(userId);
+	// First-come claim is open to every signed-in account unless the owner pins
+	// it to one address with BOOTSTRAP_ADMIN_EMAIL (compared case-insensitively).
+	const allowed = process.env.BOOTSTRAP_ADMIN_EMAIL?.trim().toLowerCase();
+	if (allowed) {
+		const me = (await sql`select lower(email) as email from "user" where id = ${userId}`)[0];
+		if (!me || me.email !== allowed) throw hotel("claim_restricted");
+	}
 	if (!(await sql.query(`
       with upd as (
         update hotel_settings
            set value = $1
          where key = 'bootstrap_admin'
-           and value = ''
            and not exists (
              select 1 from user_roles where role_code in ('HOTEL_ADMIN','SUPER_ADMIN')
            )
@@ -602,6 +608,39 @@ export async function requestCheckout(userId) {
     `, [userId]))[0]) throw hotel("bad_transition");
 	return { ok: true };
 }
+export async function cancelCheckoutRequest(userId) {
+	if (!(await (await db()).query(`
+      with stay as (
+        update stays
+           set status = 'ACTIVE'
+         where user_id = $1 and status = 'CHECKOUT_PENDING'
+        returning id, room_id
+      ),
+      room as (
+        update rooms rm
+           set status = 'OCCUPIED'
+          from stay
+         where rm.id = stay.room_id and rm.status = 'CHECKOUT_PENDING'
+        returning rm.id
+      ),
+      hist as (
+        insert into room_status_history (room_id, from_status, to_status, actor_user_id, reason)
+        select stay.room_id, 'CHECKOUT_PENDING', 'OCCUPIED', $1, 'guest withdrew checkout request'
+          from stay
+         where exists (select 1 from room)
+        returning id
+      ),
+      note as (
+        insert into notifications (recipient_role, type, title_en, title_fa, body_en, body_fa, entity_type, entity_id)
+        select 'RECEPTION', 'HOTEL_ANNOUNCEMENT', 'Checkout request withdrawn', 'درخواست خروج پس گرفته شد',
+               'The guest is staying on', 'مهمان به اقامت ادامه می‌دهد', 'stay', stay.id::text
+          from stay
+        returning id
+      )
+      select id, room_id from stay
+    `, [userId]))[0]) throw hotel("bad_transition");
+	return { ok: true };
+}
 export async function myNotifications(userId) {
 	const sql = await db();
 	const actor = await actorOf(sql, userId);
@@ -706,9 +745,9 @@ export async function opsSnapshot(userId) {
         (select count(*)::int from maintenance_tickets where status not in ('RESOLVED','CANCELLED')) as open_maint,
         (select count(*)::int from orders where department_code = 'LAUNDRY' and status not in ('COMPLETED','CANCELLED','REJECTED')) as laundry,
         (select avg(extract(epoch from (accepted_at - created_at)))::int from orders where accepted_at is not null) as response_seconds,
-        (select coalesce(sum(amount_toman),0)::int from payments
+        (select coalesce(sum(amount_toman),0)::bigint from payments
           where status = 'RECORDED' and timezone('Asia/Tehran', created_at)::date = $1::date) as collected_today,
-        (select coalesce(sum(b.balance),0)::int from (
+        (select coalesce(sum(b.balance),0)::bigint from (
             select
               coalesce((select sum(amount_toman) from folio_items fi where fi.folio_id = f.id and not fi.voided),0)
               - coalesce((select sum(amount_toman) from payments p where p.folio_id = f.id and p.status = 'RECORDED'),0)
@@ -780,8 +819,8 @@ export async function staffCheckOut(userId, stayId) {
 	need(actor, "reservation.checkout");
 	const balance = (await sql`
     select
-      coalesce((select sum(fi.amount_toman) from folio_items fi where fi.folio_id = f.id and not fi.voided),0)
-      - coalesce((select sum(p.amount_toman) from payments p where p.folio_id = f.id and p.status = 'RECORDED'),0)
+      (coalesce((select sum(fi.amount_toman) from folio_items fi where fi.folio_id = f.id and not fi.voided),0)
+      - coalesce((select sum(p.amount_toman) from payments p where p.folio_id = f.id and p.status = 'RECORDED'),0))::bigint
       as balance,
       s.status
       from stays s
@@ -1140,6 +1179,7 @@ export async function staffDecideExtension(userId, requestId, approve) {
            and not exists (select 1 from conflict)
            and req.nightly_rate_toman is not null
            and req.stay_status = 'ACTIVE'
+           and req.requested_check_out > req.check_out
         returning e.id, e.reservation_id, e.stay_id, e.requested_check_out, e.quoted_amount_toman
       ),
       res as (
@@ -1234,15 +1274,17 @@ export async function staffDirectory(userId) {
 	const { sql } = await staff(userId, "staff.assign");
 	return sql`
     select u.id, u.name, u.email,
+           u."emailVerified" as email_verified,
+           u."createdAt" as created_at,
            coalesce(string_agg(ur.role_code, ',' order by ur.role_code), '') as roles
       from "user" u
       left join user_roles ur on ur.user_id = u.id
-     group by u.id, u.name, u.email
+     group by u.id, u.name, u.email, u."emailVerified", u."createdAt"
      order by u.email
      limit 100
   `;
 }
-export async function staffAssignRole(userId, email, role, grant) {
+export async function staffAssignRole(userId, targetUserId, role, grant) {
 	const { sql, actor } = await staff(userId, "staff.assign");
 	if (![
 		"HOTEL_ADMIN",
@@ -1258,8 +1300,20 @@ export async function staffAssignRole(userId, email, role, grant) {
 		"SUPER_ADMIN"
 	].includes(role)) throw hotel("validation");
 	if (role === "SUPER_ADMIN" && !actor.roles.includes("SUPER_ADMIN")) throw hotel("forbidden");
-	const users = await sql`select id from "user" where lower(email) = lower(${email.trim()})`;
+	// Looked up by id (chosen from staffDirectory), not by e-mail: e-mails are
+	// self-declared and unverified at sign-up.
+	const users = await sql`select id from "user" where id = ${String(targetUserId).trim()}`;
 	if (!users[0]) throw hotel("not_found");
+	if (!grant && (role === "HOTEL_ADMIN" || role === "SUPER_ADMIN")) {
+		// Never remove the last administrator: with none left, nobody could
+		// grant roles again and the hotel would be locked out of /ops.
+		const others = await sql`
+      select count(*)::int as n from user_roles
+       where role_code in ('HOTEL_ADMIN','SUPER_ADMIN')
+         and not (user_id = ${users[0].id} and role_code = ${role})
+    `;
+		if ((others[0]?.n ?? 0) === 0) throw hotel("last_admin");
+	}
 	if (grant) await sql`
       insert into user_roles (user_id, role_code) values (${users[0].id}, ${role})
       on conflict do nothing

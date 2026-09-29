@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { useLiveRefresh } from "@/components/hotel/shell";
 import {
+  cancelCheckoutRequest,
   cancelMyOrder,
   getMyFolio,
   getSessionContext,
@@ -227,6 +228,7 @@ function StayPage() {
           busy={busy}
           onExtend={(requestedCheckOut) => act(() => requestExtension({ data: { requestedCheckOut } }))}
           onCheckout={() => act(() => requestCheckout())}
+          onWithdrawCheckout={() => act(() => cancelCheckoutRequest())}
           onRead={() =>
             act(async () => {
               const ids = (notes as Note[]).filter((n) => !n.read).map((n) => n.id);
@@ -361,6 +363,7 @@ function More({
   busy,
   onExtend,
   onCheckout,
+  onWithdrawCheckout,
   onRead,
   onProfile,
 }: {
@@ -369,6 +372,7 @@ function More({
   busy: boolean;
   onExtend: (date: string) => void;
   onCheckout: () => void;
+  onWithdrawCheckout: () => void;
   onRead: () => void;
   onProfile: (input: {
     fullName: string;
@@ -407,6 +411,14 @@ function More({
         <button className="btn" disabled={busy} onClick={onCheckout}>
           {t.checkOutAction}
         </button>
+      ) : null}
+      {stay?.status === "CHECKOUT_PENDING" ? (
+        <div className="card grid gap-2">
+          <p className="muted">{t.checkOutPendingNote}</p>
+          <button className="btn" disabled={busy} onClick={onWithdrawCheckout}>
+            {t.withdrawCheckout}
+          </button>
+        </div>
       ) : null}
       <article className="card">
         <div className="mb-2 flex items-center justify-between">

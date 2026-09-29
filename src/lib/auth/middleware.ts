@@ -28,10 +28,17 @@ import { createMiddleware } from "@tanstack/react-start";
 export const authMiddleware = createMiddleware({ type: "function" })
   .client(async ({ next }) => {
     // Live preview (partitioned iframe): the session rides a bearer token, not a
-    // cookie, so forward it to the server. Null when deployed (cookie auth), so
-    // this is a no-op there.
-    const { getBearerToken } = await import("./client");
-    return next({ sendContext: { bearerToken: getBearerToken() ?? undefined } });
+    // cookie, so forward it to the server. Deployed, the cookie carries the
+    // session and NOTHING is forwarded: GET server functions serialise their
+    // context into the URL, so a token here would end up in request logs.
+    const { isLivePreviewHost } = await import("./bearer-storage");
+    const inPreview = typeof window !== "undefined" && isLivePreviewHost(window.location.hostname);
+    let bearerToken: string | undefined;
+    if (inPreview) {
+      const { getBearerToken } = await import("./client");
+      bearerToken = getBearerToken() ?? undefined;
+    }
+    return next({ sendContext: { bearerToken } });
   })
   .server(async ({ next, context }) => {
     // ONLY import `*.server` modules here. This file is dual client/server
