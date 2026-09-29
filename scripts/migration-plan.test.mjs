@@ -88,3 +88,18 @@ test("the copy check reads both files and catches an edit", () => {
   const drifted = authSchemaCopy(root);
   assert.notEqual(drifted.copy, drifted.source);
 });
+
+test("the deploy-time migrator runs for production and local builds only", async () => {
+  const { migrationDecision } = await import("./migration-plan.mjs");
+  const url = "postgresql://user:pw@host/db";
+  assert.equal(migrationDecision({}).run, false, "no DATABASE_URL: nothing to migrate");
+  assert.equal(migrationDecision({ DATABASE_URL: "   " }).run, false, "whitespace counts as unset");
+  assert.equal(migrationDecision({ DATABASE_URL: url }).run, true, "local build with a database");
+  assert.equal(migrationDecision({ DATABASE_URL: url, VERCEL_ENV: "production" }).run, true);
+  // Vercel gives preview builds the production DATABASE_URL: a branch push must
+  // not migrate the production schema.
+  const preview = migrationDecision({ DATABASE_URL: url, VERCEL_ENV: "preview" });
+  assert.equal(preview.run, false);
+  assert.match(preview.reason, /preview build/);
+  assert.equal(migrationDecision({ DATABASE_URL: url, VERCEL_ENV: "preview", MIGRATE_ON_PREVIEW: "1" }).run, true);
+});

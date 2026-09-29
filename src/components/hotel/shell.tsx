@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { getBearerToken, signOut } from "@/lib/auth/client";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { getPublicHotel, getSessionContext } from "@/lib/hotel/api";
+import { nextReconnectDelay } from "@/lib/hotel/live-plan";
 import { useI18n } from "@/lib/i18n";
 
 const STAFF = new Set([
@@ -263,45 +264,74 @@ export function useLiveRefresh(enabled: boolean, refresh: () => void) {
   useEffect(() => {
     if (!enabled) return;
     let stop = false;
-    const controller = new AbortController();
+    let controller = new AbortController();
     let pending = 0;
+    let reconnectTimer = 0;
+    let attempt = 0;
+    let after = 0;
+    const kick = () => {
+      window.clearTimeout(pending);
+      pending = window.setTimeout(() => refreshRef.current(), 400);
+    };
+    /**
+     * One stream. The server ends every stream after LIVE_STREAM_MAX_MS (the
+     * function it runs in has a hard time limit), so a normal end reconnects
+     * at once; an error or a non-OK response backs off.
+     */
     const connect = async () => {
+      if (stop) return;
+      controller = new AbortController();
       const headers = new Headers({ Accept: "text/event-stream" });
       const token = getBearerToken();
       if (token) headers.set("Authorization", `Bearer ${token}`);
+      let endedNormally = false;
       try {
-        const response = await fetch("/api/live", { headers, signal: controller.signal, credentials: "same-origin" });
+        const response = await fetch(`/api/live?after=${after}`, {
+          headers,
+          signal: controller.signal,
+          credentials: "same-origin",
+        });
         if (!response.ok || !response.body) {
           if (!stop) setLive(false);
-          return;
-        }
-        if (!stop) setLive(true);
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-        const kick = () => {
-          window.clearTimeout(pending);
-          pending = window.setTimeout(() => refreshRef.current(), 400);
-        };
-        while (!stop) {
-          const chunk = await reader.read();
-          if (chunk.done) break;
-          buffer += decoder.decode(chunk.value, { stream: true });
-          if (buffer.includes("data:")) {
+          if (response.status === 401) return; // signed out: nothing to stream
+        } else {
+          if (!stop) setLive(true);
+          attempt = 0;
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+          while (!stop) {
+            const chunk = await reader.read();
+            if (chunk.done) break;
+            buffer += decoder.decode(chunk.value, { stream: true });
+            if (buffer.includes("event: end")) {
+              const match = /"after":(\d+)/.exec(buffer);
+              if (match) after = Math.max(after, Number(match[1]));
+              endedNormally = true;
+            }
+            if (buffer.includes("data:")) {
+              const ids = [...buffer.matchAll(/"id":(\d+)/g)].map((m) => Number(m[1]));
+              if (ids.length) after = Math.max(after, ...ids);
+              if (!endedNormally) kick();
+            }
             buffer = "";
-            kick();
           }
         }
-        if (!stop) setLive(false);
       } catch {
-        if (!stop) setLive(false);
+        /* aborted or network error */
       }
+      if (stop) return;
+      setLive(false);
+      const delay = nextReconnectDelay(attempt, endedNormally);
+      if (!endedNormally) attempt += 1;
+      reconnectTimer = window.setTimeout(() => void connect(), delay);
     };
     void connect();
     const backup = window.setInterval(() => refreshRef.current(), 12000);
     return () => {
       stop = true;
       window.clearTimeout(pending);
+      window.clearTimeout(reconnectTimer);
       controller.abort();
       window.clearInterval(backup);
     };

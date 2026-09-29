@@ -13,6 +13,7 @@ import {
   orderIsPriced,
   tehranToday,
 } from "./domain";
+import { FixedWindowLimiter, shouldRunSweep } from "./rate-limit";
 import {
   bookRoomSql,
   checkInSql,
@@ -30,19 +31,10 @@ export function hotel(code) {
 	err.name = "HotelError";
 	return err;
 }
-var buckets = /* @__PURE__ */ new Map();
+// Per-process limiter with bounded memory (expired keys are swept); see rate-limit.ts.
+const limiter = new FixedWindowLimiter();
 function limit(key, max, windowMs) {
-	const now = Date.now();
-	const current = buckets.get(key);
-	if (!current || now - current.t > windowMs) {
-		buckets.set(key, {
-			n: 1,
-			t: now
-		});
-		return;
-	}
-	current.n += 1;
-	if (current.n > max) throw hotel("rate_limited");
+	if (!limiter.hit(key, max, windowMs)) throw hotel("rate_limited");
 }
 function log(action, fields) {
 	console.log(JSON.stringify({
@@ -84,7 +76,16 @@ function need(actor, permission) {
 async function setting(sql, key) {
 	return (await sql`select value from hotel_settings where key = ${key}`)[0]?.value ?? "";
 }
-async function expire(sql) {
+// The lazy hold-expiry sweep is an UPDATE. The public availability search runs
+// it too, so without a throttle every anonymous search would write to the
+// database; at most one sweep per EXPIRE_SWEEP_MS per process is plenty for a
+// 30-minute hold. Booking and the staff list force a fresh sweep.
+const EXPIRE_SWEEP_MS = 30_000;
+let lastExpireAt = 0;
+async function expire(sql, force = false) {
+	const now = Date.now();
+	if (!force && !shouldRunSweep(lastExpireAt, now, EXPIRE_SWEEP_MS)) return;
+	lastExpireAt = now;
 	const q = expirePendingSql(Number(await setting(sql, "pending_hold_minutes")) || 30);
 	await sql.query(q.text, q.values);
 }
@@ -310,7 +311,7 @@ export async function createReservation(userId, input) {
 	const notes = input.notes?.trim().slice(0, 500) || null;
 	const sql = await db();
 	await bootstrapUser(userId);
-	await expire(sql);
+	await expire(sql, true);
 	const existing = await sql`
     select id, code, status from reservations
      where user_id = ${userId} and idempotency_key = ${key}
@@ -759,7 +760,7 @@ export async function opsSnapshot(userId) {
 }
 export async function staffReservations(userId) {
 	const { sql } = await staff(userId, "reservation.read");
-	await expire(sql);
+	await expire(sql, true);
 	return sql`
     select r.id, r.code, r.status, r.check_in, r.check_out, r.adults, r.children,
            r.nightly_rate_toman, r.guest_name, r.guest_phone, r.created_at,
@@ -1415,9 +1416,14 @@ export async function staffAnnounce(userId, en, fa) {
   `;
 	return { ok: true };
 }
-export async function liveSince(userId, afterId) {
+export async function liveRoles(userId) {
 	const sql = await db();
-	const actor = await actorOf(sql, userId);
+	return (await actorOf(sql, userId)).roles;
+}
+export async function liveSince(userId, afterId, roles) {
+	const sql = await db();
+	// Roles are resolved once per stream by /api/live; fall back to a lookup.
+	const actor = roles ? { roles } : await actorOf(sql, userId);
 	return sql.query(`
       select n.id, n.type, n.title_en, n.title_fa, n.body_en, n.body_fa, n.created_at
         from notifications n
