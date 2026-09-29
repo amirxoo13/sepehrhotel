@@ -261,6 +261,13 @@ export async function claimAdmin(userId) {
 	limit(`claim:${userId}`, 5, 6e4);
 	const sql = await db();
 	await bootstrapUser(userId);
+	// First-come claim is open to every signed-in account unless the owner pins
+	// it to one address with BOOTSTRAP_ADMIN_EMAIL (compared case-insensitively).
+	const allowed = process.env.BOOTSTRAP_ADMIN_EMAIL?.trim().toLowerCase();
+	if (allowed) {
+		const me = (await sql`select lower(email) as email from "user" where id = ${userId}`)[0];
+		if (!me || me.email !== allowed) throw hotel("claim_restricted");
+	}
 	if (!(await sql.query(`
       with upd as (
         update hotel_settings
@@ -1267,15 +1274,17 @@ export async function staffDirectory(userId) {
 	const { sql } = await staff(userId, "staff.assign");
 	return sql`
     select u.id, u.name, u.email,
+           u."emailVerified" as email_verified,
+           u."createdAt" as created_at,
            coalesce(string_agg(ur.role_code, ',' order by ur.role_code), '') as roles
       from "user" u
       left join user_roles ur on ur.user_id = u.id
-     group by u.id, u.name, u.email
+     group by u.id, u.name, u.email, u."emailVerified", u."createdAt"
      order by u.email
      limit 100
   `;
 }
-export async function staffAssignRole(userId, email, role, grant) {
+export async function staffAssignRole(userId, targetUserId, role, grant) {
 	const { sql, actor } = await staff(userId, "staff.assign");
 	if (![
 		"HOTEL_ADMIN",
@@ -1291,7 +1300,9 @@ export async function staffAssignRole(userId, email, role, grant) {
 		"SUPER_ADMIN"
 	].includes(role)) throw hotel("validation");
 	if (role === "SUPER_ADMIN" && !actor.roles.includes("SUPER_ADMIN")) throw hotel("forbidden");
-	const users = await sql`select id from "user" where lower(email) = lower(${email.trim()})`;
+	// Looked up by id (chosen from staffDirectory), not by e-mail: e-mails are
+	// self-declared and unverified at sign-up.
+	const users = await sql`select id from "user" where id = ${String(targetUserId).trim()}`;
 	if (!users[0]) throw hotel("not_found");
 	if (!grant && (role === "HOTEL_ADMIN" || role === "SUPER_ADMIN")) {
 		// Never remove the last administrator: with none left, nobody could

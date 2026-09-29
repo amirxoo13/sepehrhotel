@@ -23,9 +23,18 @@ This app runs as one TanStack Start server. Preview uses embedded Postgres (wipe
 - Parking capacity is not asserted. Sources conflict.
 - Backups: platform Postgres may offer its own backups. Restoration has **NOT VERIFIED** been tested here. Do not describe it as proven recoverable.
 
+## Deployment environment (Vercel)
+
+Besides the Neon `DATABASE_URL`, the deployed app needs:
+
+- `BETTER_AUTH_URL` — the public origin, e.g. `https://sepehrhotel.vercel.app`. Without it Better Auth only trusts the Grok sandbox hosts and rejects every sign-in from the site itself with `403 INVALID_ORIGIN`.
+- `BETTER_AUTH_SECRET` — a fixed random value of at least 32 bytes (`openssl rand -hex 32`). Without it every server instance signs sessions with its own random key and sessions do not survive between instances; production refuses to start without it.
+- `BOOTSTRAP_ADMIN_EMAIL` (recommended) — the only e-mail address allowed to claim hotel admin. Without it the first signed-in account that opens Operations becomes admin.
+- `EXTRA_TRUSTED_ORIGINS` (optional) — comma-separated extra origins such as a custom domain. Vercel preview hosts are trusted automatically.
+
 ## First admin
 
-There is no seeded staff password. The first signed-in person who claims Operations becomes hotel admin, once. They then grant roles to people who already created accounts. Claim this before sharing the address.
+There is no seeded staff password. The first signed-in person who claims Operations becomes hotel admin, once (or only `BOOTSTRAP_ADMIN_EMAIL`, when set). They then grant roles to accounts picked from the staff directory; sign-up e-mails are not verified, so check the name, e-mail and sign-up date against the real person before granting. Claim this before sharing the address. The last admin cannot remove their own admin role.
 
 ## Currency and time
 

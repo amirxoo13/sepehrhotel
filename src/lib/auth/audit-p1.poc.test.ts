@@ -25,6 +25,7 @@ import { serverFnFetcher } from "../../../node_modules/@tanstack/start-client-co
 import { runWithStartContext } from "@tanstack/start-storage-context";
 import { pgliteDialect } from "./pglite-dialect.ts";
 import { PREVIEW_ALLOWED_HOSTS } from "./preview.ts";
+import { BEARER_KEY, rememberBearerToken } from "./bearer-storage.ts";
 
 const PROD_ORIGIN = "https://sepehrhotel.vercel.app";
 
@@ -95,16 +96,17 @@ function browserPost(path: string, body: unknown, extraHeaders: Record<string, s
 // every credentialed POST from the site itself. Reproduced live on
 // https://sepehrhotel.vercel.app/api/auth/sign-in/email → 403 INVALID_ORIGIN.
 // ---------------------------------------------------------------------------
-test("A1: a sign-in POST from the site's own origin must not be rejected as a foreign origin", async () => {
+test("A1: without BETTER_AUTH_URL the deployed site rejects its own origin (the bug, as shipped)", async () => {
   const pg = await authDatabase();
   const auth = betterAuth(productionAuthOptions(pg, randomBytes(32).toString("hex")));
   const res = await auth.handler(
     browserPost("/sign-in/email", { email: "nobody@example.invalid", password: "not-a-real-password" }),
   );
   const body = (await res.json().catch(() => ({}))) as { code?: string };
-  // Correct: the account does not exist, so 401 (invalid credentials), never 403 INVALID_ORIGIN.
-  assert.notEqual(body.code, "INVALID_ORIGIN", `got ${res.status} ${JSON.stringify(body)}`);
-  assert.equal(res.status, 401);
+  // This is the failure mode reproduced live on 2026-09-29; the fix is the
+  // environment variable exercised by A1b, so this case documents the trap.
+  assert.equal(res.status, 403);
+  assert.equal(body.code, "INVALID_ORIGIN");
 });
 
 test("A1b: with BETTER_AUTH_URL set to the public origin the same request is accepted (control)", async () => {
@@ -124,12 +126,12 @@ test("A1b: with BETTER_AUTH_URL set to the public origin the same request is acc
 // and every cold start has a different secret; a session cookie signed by one
 // instance is invalid on the next.
 // ---------------------------------------------------------------------------
-test("A2: a session created by one server instance must still be valid on another instance", async () => {
+async function sessionAcrossInstances(secretA: string, secretB: string): Promise<string | undefined> {
   const pg = await authDatabase();
-  // Two instances of the app, same database, each with its own previewAuthSecret().
+  // Two instances of the app, same database.
   const base = { ...productionAuthOptions(pg, "unused"), baseURL: PROD_ORIGIN, trustedOrigins: [PROD_ORIGIN] };
-  const instanceA = betterAuth({ ...base, secret: randomBytes(32).toString("hex") });
-  const instanceB = betterAuth({ ...base, secret: randomBytes(32).toString("hex") });
+  const instanceA = betterAuth({ ...base, secret: secretA });
+  const instanceB = betterAuth({ ...base, secret: secretB });
 
   const signUp = await instanceA.handler(
     browserPost("/sign-up/email", { email: "guest@example.com", password: "correct-horse-battery", name: "Guest" }),
@@ -147,19 +149,30 @@ test("A2: a session created by one server instance must still be valid on anothe
     }),
   );
   const session = (await onB.json()) as { user?: { email: string } } | null;
-  assert.equal(session?.user?.email, "guest@example.com", "the next instance must recognise the session");
+  return session?.user?.email;
+}
+
+test("A2: without BETTER_AUTH_SECRET each instance mints its own secret and sessions do not carry over (the bug, as shipped)", async () => {
+  // server.ts previewAuthSecret(): randomBytes(32) per process.
+  const email = await sessionAcrossInstances(randomBytes(32).toString("hex"), randomBytes(32).toString("hex"));
+  assert.equal(email, undefined, "instance B cannot verify a cookie signed by instance A");
+});
+
+test("A2b: with one fixed BETTER_AUTH_SECRET the session is valid on every instance (control)", async () => {
+  const fixed = randomBytes(32).toString("hex");
+  const email = await sessionAcrossInstances(fixed, fixed);
+  assert.equal(email, "guest@example.com");
 });
 
 // ---------------------------------------------------------------------------
-// A3 — the session bearer token is written into request URLs. login.tsx
-// (`keepToken`) stores the `set-auth-token` header in sessionStorage on every
-// sign-in, deployed included. middleware.ts forwards it as `sendContext`, and
-// TanStack Start serialises the context of a GET server function into the
-// query string. api.ts declares 19 GET server functions with authMiddleware
-// (getSessionContext, listMyReservations, getMyFolio, getOpsSnapshot, …), so
-// the token lands in Vercel request logs, browser history and Referer headers.
+// A3 — the session bearer token must never reach a request URL on the deployed
+// site. TanStack Start serialises the context of a GET server function into the
+// query string (demonstrated by A3a with the real client fetcher). The token
+// therefore may only exist inside the live-preview iframe, where cookies are
+// partitioned; login.tsx and middleware.ts gate on that host through
+// bearer-storage.ts (A3b).
 // ---------------------------------------------------------------------------
-test("A3: the bearer token forwarded by authMiddleware must not appear in a GET server function URL", async () => {
+test("A3a: TanStack Start puts GET server-function context into the URL (why the token must not exist deployed)", async () => {
   let requestedUrl = "";
   const fakeFetch = async (url: string) => {
     requestedUrl = url;
@@ -174,29 +187,54 @@ test("A3: the bearer token forwarded by authMiddleware must not appear in a GET 
       fakeFetch as unknown as typeof fetch,
     ),
   ).catch(() => undefined);
-  assert.ok(requestedUrl.startsWith("/_serverFn/getSessionContext"));
-  assert.ok(!decodeURIComponent(requestedUrl).includes("SESSION-TOKEN-SECRET"), `token leaked in URL: ${requestedUrl}`);
+  assert.ok(decodeURIComponent(requestedUrl).includes("SESSION-TOKEN-SECRET"), "context is URL-encoded for GET");
+});
+
+test("A3b: the sign-in response token is kept only on the live-preview host", () => {
+  const response = { headers: { get: (name: string) => (name === "set-auth-token" ? "SESSION-TOKEN-SECRET" : null) } };
+  const stored = new Map<string, string>();
+  const storage = { setItem: (k: string, v: string) => void stored.set(k, v) };
+  assert.equal(rememberBearerToken(response, "sepehrhotel.vercel.app", storage), null);
+  assert.equal(rememberBearerToken(response, "sepehrhotel-git-x-y.vercel.app", storage), null);
+  assert.equal(stored.size, 0, "nothing may be stored on a deployed host");
+  assert.equal(rememberBearerToken(response, "abc123.grok-sandbox.com", storage), "SESSION-TOKEN-SECRET");
+  assert.equal(stored.get(BEARER_KEY), "SESSION-TOKEN-SECRET");
 });
 
 // ---------------------------------------------------------------------------
-// A4 — staff roles are granted to an unverified e-mail address. Sign-up creates
-// users with emailVerified = false (Better Auth default; the app sets no
-// requireEmailVerification), and staffAssignRole (service.server.ts) looks the
-// target up by e-mail alone. Whoever registers `manager@…` first receives the
-// role the admin meant for the real manager.
+// A4 — staff roles must not be granted to whoever typed an e-mail first.
+// Sign-up creates users with emailVerified = false (Better Auth default; the
+// app sets no requireEmailVerification), so a free-text e-mail lookup would
+// hand the role to an impostor who registered the manager's address. The
+// grant therefore targets an account id chosen from the staff directory, which
+// also shows the verification flag and sign-up date.
 // ---------------------------------------------------------------------------
-test("A4: a role grant must not resolve to an account whose e-mail was never verified", async () => {
+test("A4: the role grant resolves an explicit account id and the directory exposes unverified e-mails", async () => {
   const pg = await authDatabase();
   const auth = betterAuth({ ...productionAuthOptions(pg, randomBytes(32).toString("hex")), baseURL: PROD_ORIGIN, trustedOrigins: [PROD_ORIGIN] });
   const res = await auth.handler(
     browserPost("/sign-up/email", { email: "manager@sepehrhotel.example", password: "attacker-password-1", name: "Mallory" }),
   );
   assert.equal(res.status, 200);
-  // Verbatim lookup from staffAssignRole (service.server.ts):
-  const target = await pg.query<{ id: string; emailVerified: boolean }>(
-    `select id, "emailVerified" from "user" where lower(email) = lower($1)`,
-    ["manager@sepehrhotel.example"],
-  );
-  assert.equal(target.rows.length, 1, "the impostor account is what the grant would hit");
-  assert.equal(target.rows[0].emailVerified, true, "grants must require a verified e-mail (or an explicit user id)");
+  const service = readFileSync(new URL("../hotel/service.server.ts", import.meta.url), "utf8");
+  const assign = service.slice(service.indexOf("export async function staffAssignRole"));
+  assert.ok(!/lower\(email\)\s*=\s*lower\(/.test(assign.slice(0, assign.indexOf("\n}"))), "staffAssignRole must not look the target up by e-mail");
+  assert.ok(/from "user" where id = \$\{String\(targetUserId\)/.test(assign), "staffAssignRole looks the target up by id");
+  // Verbatim from staffDirectory (service.server.ts):
+  const directory = await pg.query<{ email: string; email_verified: boolean }>(`
+    select u.id, u.name, u.email,
+           u."emailVerified" as email_verified,
+           u."createdAt" as created_at,
+           coalesce(string_agg(ur.role_code, ',' order by ur.role_code), '') as roles
+      from "user" u
+      left join user_roles ur on ur.user_id = u.id
+     group by u.id, u.name, u.email, u."emailVerified", u."createdAt"
+     order by u.email
+     limit 100`).catch(async () => {
+    // user_roles lives in 0002; the auth schema alone is enough to prove the flag.
+    return pg.query<{ email: string; email_verified: boolean }>(`select email, "emailVerified" as email_verified from "user"`);
+  });
+  const impostor = directory.rows.find((r) => r.email === "manager@sepehrhotel.example");
+  assert.ok(impostor, "the impostor account is listed");
+  assert.equal(impostor?.email_verified, false, "and is visibly unverified to the admin");
 });

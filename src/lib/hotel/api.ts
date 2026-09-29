@@ -478,11 +478,14 @@ export const getDirectory = createServerFn({ method: "GET" })
 export const assignRole = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((input: unknown) =>
-    parse(z.object({ email: z.string().email(), role: z.string().min(3).max(40), grant: z.boolean() }), input),
+    // The target is an account picked from the staff directory (by id), never a
+    // free-typed e-mail: sign-up e-mails are unverified, so an impostor who
+    // registered the manager's address first would otherwise receive the role.
+    parse(z.object({ userId: z.string().min(1).max(80), role: z.string().min(3).max(40), grant: z.boolean() }), input),
   )
   .handler(async ({ context, data }) => {
     const { staffAssignRole } = await svc();
-    return out(staffAssignRole(context.userId, data.email, data.role, data.grant));
+    return out(staffAssignRole(context.userId, data.userId, data.role, data.grant));
   });
 
 export const getAudit = createServerFn({ method: "GET" })

@@ -1,22 +1,22 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { authClient, GROK_PROVIDERS, signIn } from "@/lib/auth/client";
+import { authClient } from "@/lib/auth/client";
+import { rememberBearerToken } from "@/lib/auth/bearer-storage";
 import { hotelMessage, useI18n } from "@/lib/i18n";
 
 export const Route = createFileRoute("/login")({
   component: LoginPage,
 });
 
-const BEARER_KEY = "grok-auth.bearer-token";
-
+/** Live preview only — deployed, the HttpOnly cookie is the session (see bearer-storage.ts). */
 function keepToken(response: Response) {
-  const token = response.headers.get("set-auth-token");
-  if (!token) return;
+  let storage: Storage | undefined;
   try {
-    sessionStorage.setItem(BEARER_KEY, token);
+    storage = window.sessionStorage;
   } catch {
-    /* private mode */
+    storage = undefined;
   }
+  rememberBearerToken(response, window.location.hostname, storage);
 }
 
 function LoginPage() {
@@ -87,18 +87,10 @@ function LoginPage() {
         <button type="button" className="btn btn-quiet mt-2 w-full" onClick={() => setMode(mode === "up" ? "in" : "up")}>
           {mode === "up" ? t.haveAccount : t.createAccount}
         </button>
-        <div className="mt-4 grid gap-2">
-          {GROK_PROVIDERS.map((provider) => (
-            <button
-              key={provider.providerId}
-              type="button"
-              className="btn"
-              onClick={() => void signIn(provider.providerId, { callbackURL: "/stay" })}
-            >
-              {provider.idp === "google" ? t.continueGoogle : t.continueX}
-            </button>
-          ))}
-        </div>
+        {/* Google / X sign-in federates through the Grok auth broker, whose shared
+            preview client only accepts *.grok-sandbox.com callbacks; on the
+            deployed site those buttons could never complete. Re-add them once
+            the hotel has its own OAuth client configured in Better Auth. */}
       </div>
     </main>
   );

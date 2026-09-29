@@ -115,8 +115,19 @@ const baseURL = explicitBaseURL ?? {
 
 // Origins Better Auth accepts on credentialed POSTs (sign-up/sign-in, etc.).
 // Missing entries here surface as FORBIDDEN "Invalid origin".
+// With an explicit BETTER_AUTH_URL (the deployed site) also trust this
+// deployment's own Vercel hosts, so preview deployments can sign in too, plus
+// any extra origins the owner lists (comma-separated, e.g. a custom domain).
+const vercelOrigins: string[] = ["VERCEL_URL", "VERCEL_BRANCH_URL"]
+  .map((key) => env(key))
+  .filter((host): host is string => Boolean(host))
+  .map((host) => `https://${host}`);
+const extraOrigins: string[] = (env("EXTRA_TRUSTED_ORIGINS") ?? "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 const trustedOrigins: string[] = explicitBaseURL
-  ? [explicitBaseURL, ...LOCAL_DEV_ORIGINS]
+  ? [explicitBaseURL, ...vercelOrigins, ...extraOrigins, ...LOCAL_DEV_ORIGINS]
   : [
       // Host wildcards (matched against Origin's host)
       ...previewAllowedHosts,
@@ -176,7 +187,17 @@ export const auth = betterAuth({
   baseURL,
   // Deployed apps inject BETTER_AUTH_SECRET. Preview: process-stable secret on
   // globalThis so HMR doesn't invalidate PGLite-backed sessions (see above).
-  secret: env("BETTER_AUTH_SECRET") ?? previewAuthSecret(),
+  // A per-process random secret is fine for the single-process preview, but on
+  // Vercel every function instance and cold start would get its own, and no
+  // session would survive between them — so production refuses to start
+  // without a fixed BETTER_AUTH_SECRET instead of failing silently.
+  secret:
+    env("BETTER_AUTH_SECRET") ??
+    (env("VERCEL_ENV") === "production"
+      ? (() => {
+          throw new Error("BETTER_AUTH_SECRET must be set in the production environment");
+        })()
+      : previewAuthSecret()),
   database,
 
   // CSRF / origin check for credentialed auth POSTs (email sign-up/sign-in, …).
