@@ -1,4 +1,4 @@
-// @ts-nocheck
+// @ts-nocheck -- legacy untyped service module (bundler output restored as source); the SQL it runs is covered by the PGLite integration tests
 import { randomBytes } from "node:crypto";
 import { getSql } from "@/lib/db";
 import {
@@ -13,6 +13,7 @@ import {
   orderIsPriced,
   tehranToday,
 } from "./domain";
+import { FixedWindowLimiter, shouldRunSweep } from "./rate-limit";
 import {
   bookRoomSql,
   checkInSql,
@@ -30,19 +31,10 @@ export function hotel(code) {
 	err.name = "HotelError";
 	return err;
 }
-var buckets = /* @__PURE__ */ new Map();
+// Per-process limiter with bounded memory (expired keys are swept); see rate-limit.ts.
+const limiter = new FixedWindowLimiter();
 function limit(key, max, windowMs) {
-	const now = Date.now();
-	const current = buckets.get(key);
-	if (!current || now - current.t > windowMs) {
-		buckets.set(key, {
-			n: 1,
-			t: now
-		});
-		return;
-	}
-	current.n += 1;
-	if (current.n > max) throw hotel("rate_limited");
+	if (!limiter.hit(key, max, windowMs)) throw hotel("rate_limited");
 }
 function log(action, fields) {
 	console.log(JSON.stringify({
@@ -84,7 +76,16 @@ function need(actor, permission) {
 async function setting(sql, key) {
 	return (await sql`select value from hotel_settings where key = ${key}`)[0]?.value ?? "";
 }
-async function expire(sql) {
+// The lazy hold-expiry sweep is an UPDATE. The public availability search runs
+// it too, so without a throttle every anonymous search would write to the
+// database; at most one sweep per EXPIRE_SWEEP_MS per process is plenty for a
+// 30-minute hold. Booking and the staff list force a fresh sweep.
+const EXPIRE_SWEEP_MS = 30_000;
+let lastExpireAt = 0;
+async function expire(sql, force = false) {
+	const now = Date.now();
+	if (!force && !shouldRunSweep(lastExpireAt, now, EXPIRE_SWEEP_MS)) return;
+	lastExpireAt = now;
 	const q = expirePendingSql(Number(await setting(sql, "pending_hold_minutes")) || 30);
 	await sql.query(q.text, q.values);
 }
@@ -310,7 +311,7 @@ export async function createReservation(userId, input) {
 	const notes = input.notes?.trim().slice(0, 500) || null;
 	const sql = await db();
 	await bootstrapUser(userId);
-	await expire(sql);
+	await expire(sql, true);
 	const existing = await sql`
     select id, code, status from reservations
      where user_id = ${userId} and idempotency_key = ${key}
@@ -759,7 +760,7 @@ export async function opsSnapshot(userId) {
 }
 export async function staffReservations(userId) {
 	const { sql } = await staff(userId, "reservation.read");
-	await expire(sql);
+	await expire(sql, true);
 	return sql`
     select r.id, r.code, r.status, r.check_in, r.check_out, r.adults, r.children,
            r.nightly_rate_toman, r.guest_name, r.guest_phone, r.created_at,
@@ -898,6 +899,10 @@ export async function staffUpdateRoom(userId, input) {
 	} else need(actor, "room.update");
 	if (input.roomType) {
 		need(actor, "room.update");
+		// Validate first: an unknown code would otherwise surface as a raw
+		// foreign-key error instead of a validation message.
+		const type = await sql`select code from room_types where code = ${input.roomType}`;
+		if (!type[0]) throw hotel("validation");
 		await sql`update rooms set room_type_code = ${input.roomType}, type_assignment = 'staff_verified' where id = ${input.roomId}`;
 	}
 	if (input.capacity) {
@@ -989,7 +994,6 @@ export async function staffTransition(userId, orderId, to) {
 		await sql`
       update parking_requests
          set status = case
-           when ${to} = 'ACCEPTED' then 'ACCEPTED'
            when ${to} = 'DELIVERED' then 'PARKED'
            when ${to} = 'COMPLETED' then 'CLOSED'
            when ${to} in ('CANCELLED','REJECTED') then 'CANCELLED'
@@ -997,6 +1001,11 @@ export async function staffTransition(userId, orderId, to) {
        where order_id = ${orderId}
     `;
 	}
+	// Accepting a parking order marks the request accepted so the parking desk
+	// sees it (the earlier version of this branch was unreachable).
+	if (to === "ACCEPTED") await sql`
+      update parking_requests set status = 'ACCEPTED' where order_id = ${orderId} and status = 'REQUESTED'
+    `;
 	log("order.transition", {
 		userId,
 		id: orderId,
@@ -1415,9 +1424,41 @@ export async function staffAnnounce(userId, en, fa) {
   `;
 	return { ok: true };
 }
-export async function liveSince(userId, afterId) {
+export async function staffResetPassword(userId, targetUserId, newPassword) {
+	const { sql, actor } = await staff(userId, "staff.assign");
+	const password = String(newPassword ?? "");
+	if (password.length < 8 || password.length > 128) throw hotel("password_short");
+	const target = String(targetUserId ?? "").trim();
+	const users = await sql`select id from "user" where id = ${target}`;
+	if (!users[0]) throw hotel("not_found");
+	// Only a super admin may reset another administrator's password.
+	const targetRoles = (await sql`select role_code from user_roles where user_id = ${target}`).map((r) => r.role_code);
+	const targetIsAdmin = targetRoles.includes("HOTEL_ADMIN") || targetRoles.includes("SUPER_ADMIN");
+	if (targetIsAdmin && target !== userId && !actor.roles.includes("SUPER_ADMIN")) throw hotel("forbidden");
+	// Better Auth owns the credential hash and the session rows: hash with its
+	// own algorithm, store on the credential account, and sign the user out of
+	// every device so a stolen session cannot outlive the reset.
+	const { auth } = await import("@/lib/auth/server");
+	const ctx = await auth.$context;
+	const hash = await ctx.password.hash(password);
+	await ctx.internalAdapter.updatePassword(target, hash);
+	const sessions = await ctx.internalAdapter.listSessions(target);
+	if (sessions.length) await ctx.internalAdapter.deleteSessions(sessions.map((s) => s.token));
+	await sql`
+    insert into audit_logs (actor_user_id, action, entity_type, entity_id, new_value)
+    values (${userId}, 'staff.password_reset', 'user', ${target}, ${JSON.stringify({ sessionsRevoked: sessions.length })}::jsonb)
+  `;
+	log("staff.password_reset", { userId, target });
+	return { ok: true, sessionsRevoked: sessions.length };
+}
+export async function liveRoles(userId) {
 	const sql = await db();
-	const actor = await actorOf(sql, userId);
+	return (await actorOf(sql, userId)).roles;
+}
+export async function liveSince(userId, afterId, roles) {
+	const sql = await db();
+	// Roles are resolved once per stream by /api/live; fall back to a lookup.
+	const actor = roles ? { roles } : await actorOf(sql, userId);
 	return sql.query(`
       select n.id, n.type, n.title_en, n.title_fa, n.body_en, n.body_fa, n.created_at
         from notifications n

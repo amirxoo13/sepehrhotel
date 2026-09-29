@@ -1,12 +1,12 @@
 import { pendingMigrations } from "../../scripts/migration-plan.mjs";
+import { resolveDbSource, type DbSource } from "./db-source";
 
-/** Which database backend is active. */
-export type DbSource = "neon" | "pglite";
+export type { DbSource };
 
 // An empty/whitespace DATABASE_URL (an easy misconfig in deploy UIs) must mean
 // "unset" — otherwise production would silently run on the PGLite fallback.
-const rawDatabaseUrl =
-  typeof process !== "undefined" ? process.env.DATABASE_URL : undefined;
+const processEnv = typeof process !== "undefined" ? process.env : {};
+const rawDatabaseUrl = processEnv.DATABASE_URL;
 const databaseUrl =
   rawDatabaseUrl && rawDatabaseUrl.trim() ? rawDatabaseUrl : undefined;
 
@@ -14,9 +14,10 @@ const databaseUrl =
  * Active backend: real **Neon** when `DATABASE_URL` is set (deployed / configured
  * sandbox), otherwise a local embedded **PGLite** (Postgres compiled to WASM) so
  * the app has a working database even with nothing configured — the live preview
- * included. Swap in Neon later by just setting `DATABASE_URL`; no code changes.
+ * included. A production deployment without `DATABASE_URL` refuses to start
+ * rather than silently losing every write (see `db-source.ts`).
  */
-export const dbSource: DbSource = databaseUrl ? "neon" : "pglite";
+export const dbSource: DbSource = resolveDbSource(processEnv);
 
 /**
  * Minimal shared SQL surface, satisfied by both Neon and PGLite. Both the

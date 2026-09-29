@@ -1,5 +1,5 @@
 {
-  "name": "app-builder-workspace",
+  "name": "sepehrhotel",
   "private": true,
   "sideEffects": false,
   "type": "module",
@@ -7,16 +7,12 @@
     "nf3": "0.3.17"
   },
   "scripts": {
-    "dev": "node scripts/with-app-env.mjs vite dev --host 0.0.0.0 --port 8080",
-    "build": "node scripts/with-app-env.mjs vite build && node -e \"const fs=require('fs');const path=require('path');const src='node_modules/@electric-sql/pglite/dist';const dest='.vercel/output/functions/__server.func/_libs';for (const name of ['pglite.data','pglite.wasm','initdb.wasm']) fs.copyFileSync(path.join(src,name), path.join(dest,name));\" && npm run db:migrate",
+    "dev": "vite dev --host 0.0.0.0 --port 8080",
+    "build": "vite build && node scripts/copy-pglite.mjs && npm run db:migrate",
     "db:migrate": "node scripts/migrate.mjs",
-    "build:dev": "node scripts/with-app-env.mjs vite build --mode development",
-    "preview": "node scripts/with-app-env.mjs vite preview",
-    "preview:restart": "node scripts/preview.mjs restart",
-    "preview:stop": "node scripts/preview.mjs stop",
+    "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "check:auth": "node scripts/check-auth-invariant.mjs",
-    "test": "node --test 'scripts/**/*.test.mjs' && node --experimental-strip-types --test src/lib/app-data/app-data.test.ts src/lib/app-data/readiness-schedule.test.ts src/lib/auth/gate-identity.test.ts src/lib/auth/sign-in-gate.test.ts src/lib/hotel/domain.test.ts src/lib/hotel/format.test.ts src/lib/hotel/reservation.integration.test.ts src/lib/hotel/audit-p0.poc.test.ts && node --experimental-transform-types --test src/lib/auth/audit-p1.poc.test.ts",
+    "test": "node --test scripts/migration-plan.test.mjs && node --experimental-strip-types --test src/lib/hotel/domain.test.ts src/lib/hotel/format.test.ts src/lib/hotel/reservation.integration.test.ts src/lib/hotel/audit-p0.poc.test.ts && node --experimental-transform-types --test src/lib/auth/audit-p1.poc.test.ts src/lib/auth/config.test.ts src/lib/db-source.test.ts src/lib/hotel/rate-limit.test.ts src/lib/hotel/live-plan.test.ts",
     "lint": "eslint .",
     "format": "prettier --write ."
   },

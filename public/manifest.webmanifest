@@ -1,0 +1,19 @@
+{
+  "name": "هتل آپارتمان سپهر",
+  "short_name": "سپهر",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "lang": "fa",
+  "dir": "rtl",
+  "background_color": "#161513",
+  "theme_color": "#161513",
+  "icons": [
+    {
+      "src": "/icon-180.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ]
+}
