@@ -16,6 +16,7 @@ import { betterAuth } from "better-auth";
 import { tanstackStartCookies } from "better-auth/tanstack-start";
 import { randomBytes } from "node:crypto";
 import { Pool } from "pg";
+import { normalizeDatabaseUrl } from "../../../scripts/database-url.mjs";
 import { ensureDbReady, getPglite } from "../db";
 import { resolveBaseUrl, resolveSecret, resolveTrustedOrigins } from "./config";
 import { pgliteDialect } from "./pglite-dialect";
@@ -37,7 +38,7 @@ function localSecret(): string {
 }
 
 const env = process.env;
-const databaseUrl = env.DATABASE_URL?.trim();
+const databaseUrl = normalizeDatabaseUrl(env.DATABASE_URL);
 
 // Real Postgres when `DATABASE_URL` is set (deployed), else the app's embedded
 // PGLite via a Kysely dialect — so Better Auth persists to the SAME DB as app
