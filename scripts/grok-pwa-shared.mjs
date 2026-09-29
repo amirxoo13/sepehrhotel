@@ -447,9 +447,12 @@ export function injectGrokPwaHead(html, ctx = {}) {
     grokOgHeadTags({ host, appName, site, documentTitle, cwd }).join(""),
   );
 
-  if (!next.includes("/grok-app-builder/extensions.js")) {
-    missing.push(...grokExtensionsHeadTags(projectId));
-  } else if (projectId && !next.includes('name="grok-project-id"')) {
+  // The platform's "Created with Grok / Remix" script (grokExtensionsHeadTags)
+  // is intentionally NOT injected: this site is self-hosted on the owner's own
+  // Vercel project, and a third-party script from grok.com would run with full
+  // access to every page, the staff operations panel included. Owner decision
+  // recorded in the audit (2026-09-29).
+  if (projectId && !next.includes('name="grok-project-id"')) {
     missing.push(`<meta name="grok-project-id" content="${escapeHtml(projectId)}">`);
   }
   if (
