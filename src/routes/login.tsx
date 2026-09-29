@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { authClient } from "@/lib/auth/client";
+import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { hotelMessage, useI18n } from "@/lib/i18n";
 
 export const Route = createFileRoute("/login")({
@@ -10,6 +11,11 @@ export const Route = createFileRoute("/login")({
 function LoginPage() {
   const { t } = useI18n();
   const navigate = useNavigate();
+  const { user } = useCurrentUserState();
+  // Already signed in: the account page, not the sign-in form.
+  useEffect(() => {
+    if (user) void navigate({ to: "/profile", replace: true });
+  }, [user, navigate]);
   const [mode, setMode] = useState<"in" | "up">("up");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");

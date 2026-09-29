@@ -54,6 +54,7 @@ const TITLE_BY_PATH: Record<string, keyof Copy> = {
   "/stay": "stay",
   "/ops": "ops",
   "/search": "searchTitle",
+  "/profile": "profile",
 };
 
 export function pageTitle(pathname: string, t: Copy): string {
@@ -133,19 +134,19 @@ export function SiteHeader() {
                         // The account entries sit under one item with a sub-menu, like "Hotels" on the old page.
                         <li
                           className={
-                            (pathname === "/stay" || pathname === "/ops" ? "current-menu-ancestor current-menu-parent " : "") +
+                            (pathname === "/stay" || pathname === "/ops" || pathname === "/profile" ? "current-menu-ancestor current-menu-parent " : "") +
                             "menu-item menu-item-type-custom menu-item-object-custom menu-item-has-children submenu"
                           }
                         >
-                          <a
-                            href="#"
-                            onClick={(event) => {
-                              event.preventDefault();
-                            }}
-                          >
+                          <Link to="/profile">
                             <span>{t.account}</span>
-                          </a>
+                          </Link>
                           <ul className="sub-menu">
+                            <MenuItem current={pathname === "/profile"}>
+                              <Link to="/profile">
+                                <span>{t.profile}</span>
+                              </Link>
+                            </MenuItem>
                             <MenuItem current={pathname === "/stay"}>
                               <Link to="/stay">
                                 <span>{t.stay}</span>

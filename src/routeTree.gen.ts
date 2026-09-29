@@ -19,6 +19,7 @@ import { Route as LocationRouteImport } from './routes/location'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as OpsRouteImport } from './routes/ops'
 import { Route as PoliciesRouteImport } from './routes/policies'
+import { Route as ProfileRouteImport } from './routes/profile'
 import { Route as RoomsRouteImport } from './routes/rooms'
 import { Route as SearchRouteImport } from './routes/search'
 import { Route as StayRouteImport } from './routes/stay'
@@ -77,6 +78,11 @@ const PoliciesRoute = PoliciesRouteImport.update({
   path: '/policies',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ProfileRoute = ProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const RoomsRoute = RoomsRouteImport.update({
   id: '/rooms',
   path: '/rooms',
@@ -124,6 +130,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/ops': typeof OpsRoute
   '/policies': typeof PoliciesRoute
+  '/profile': typeof ProfileRoute
   '/rooms': typeof RoomsRoute
   '/search': typeof SearchRoute
   '/stay': typeof StayRoute
@@ -143,6 +150,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/ops': typeof OpsRoute
   '/policies': typeof PoliciesRoute
+  '/profile': typeof ProfileRoute
   '/rooms': typeof RoomsRoute
   '/search': typeof SearchRoute
   '/stay': typeof StayRoute
@@ -163,6 +171,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/ops': typeof OpsRoute
   '/policies': typeof PoliciesRoute
+  '/profile': typeof ProfileRoute
   '/rooms': typeof RoomsRoute
   '/search': typeof SearchRoute
   '/stay': typeof StayRoute
@@ -184,6 +193,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/ops'
     | '/policies'
+    | '/profile'
     | '/rooms'
     | '/search'
     | '/stay'
@@ -203,6 +213,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/ops'
     | '/policies'
+    | '/profile'
     | '/rooms'
     | '/search'
     | '/stay'
@@ -222,6 +233,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/ops'
     | '/policies'
+    | '/profile'
     | '/rooms'
     | '/search'
     | '/stay'
@@ -242,6 +254,7 @@ export interface RootRouteChildren {
   LoginRoute: typeof LoginRoute
   OpsRoute: typeof OpsRoute
   PoliciesRoute: typeof PoliciesRoute
+  ProfileRoute: typeof ProfileRoute
   RoomsRoute: typeof RoomsRoute
   SearchRoute: typeof SearchRoute
   StayRoute: typeof StayRoute
@@ -323,6 +336,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PoliciesRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/profile': {
+      id: '/profile'
+      path: '/profile'
+      fullPath: '/profile'
+      preLoaderRoute: typeof ProfileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/rooms': {
       id: '/rooms'
       path: '/rooms'
@@ -386,6 +406,7 @@ const rootRouteChildren: RootRouteChildren = {
   LoginRoute: LoginRoute,
   OpsRoute: OpsRoute,
   PoliciesRoute: PoliciesRoute,
+  ProfileRoute: ProfileRoute,
   RoomsRoute: RoomsRoute,
   SearchRoute: SearchRoute,
   StayRoute: StayRoute,

@@ -15,7 +15,6 @@ import {
   placeOrder,
   requestCheckout,
   requestExtension,
-  saveProfile,
 } from "@/lib/hotel/api";
 import { DateField } from "@/components/hotel/dates";
 import { money, showDate } from "@/lib/hotel/format";
@@ -235,7 +234,6 @@ function StayPage() {
               if (ids.length) await markNotificationsRead({ data: { ids } });
             })
           }
-          onProfile={(input) => act(() => saveProfile({ data: input }))}
         />
       ) : null}
     </main>
@@ -365,7 +363,6 @@ function More({
   onCheckout,
   onWithdrawCheckout,
   onRead,
-  onProfile,
 }: {
   stay: { status: string; check_out: string } | null;
   notes: Note[];
@@ -374,24 +371,9 @@ function More({
   onCheckout: () => void;
   onWithdrawCheckout: () => void;
   onRead: () => void;
-  onProfile: (input: {
-    fullName: string;
-    phone: string | null;
-    nationality: string | null;
-    dateOfBirth: string | null;
-    idDocType: string | null;
-    idDocLast4: string | null;
-    locale: "fa" | "en";
-  }) => void;
 }) {
   const { t, locale } = useI18n();
   const [date, setDate] = useState(stay?.check_out ?? "");
-  const [fullName, setFullName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [nationality, setNationality] = useState("");
-  const [birth, setBirth] = useState("");
-  const [doc, setDoc] = useState("");
-  const [last4, setLast4] = useState("");
   return (
     <section className="grid gap-3">
       <form
@@ -437,47 +419,12 @@ function More({
           ))}
         </ul>
       </article>
-      <form
-        className="card grid gap-3"
-        onSubmit={(e) => {
-          e.preventDefault();
-          onProfile({
-            fullName,
-            phone: phone || null,
-            nationality: nationality || null,
-            dateOfBirth: birth || null,
-            idDocType: doc || null,
-            idDocLast4: last4 || null,
-            locale,
-          });
-        }}
-      >
+      <article className="card flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-2xl">{t.profile}</h2>
-        <label className="field">
-          {t.name}
-          <input required minLength={2} value={fullName} onChange={(e) => setFullName(e.target.value)} />
-        </label>
-        <label className="field">
-          {t.phone}
-          <input value={phone} onChange={(e) => setPhone(e.target.value)} />
-        </label>
-        <label className="field">
-          {t.nationality}
-          <input value={nationality} onChange={(e) => setNationality(e.target.value)} />
-        </label>
-        <DateField label={t.birth} value={birth} onChange={setBirth} />
-        <label className="field">
-          {t.doc}
-          <input value={doc} onChange={(e) => setDoc(e.target.value)} />
-        </label>
-        <label className="field">
-          {t.last4}
-          <input value={last4} onChange={(e) => setLast4(e.target.value)} inputMode="numeric" maxLength={4} />
-        </label>
-        <button className="btn btn-primary" disabled={busy}>
-          {t.save}
-        </button>
-      </form>
+        <Link to="/profile" className="btn btn-primary">
+          {t.profile}
+        </Link>
+      </article>
     </section>
   );
 }
