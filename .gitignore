@@ -7,3 +7,4 @@ artifacts
 .env
 .env.*
 .output
+tools/jev-assistant/logs/
