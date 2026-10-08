@@ -1,0 +1,102 @@
+{
+  "base_url": "https://jev-ai.pro/api",
+  "model": "jev-latest",
+  "max_chars_per_item": 6000,
+  "thresholds": {
+    "high": 0.9,
+    "medium": 0.65
+  },
+  "credit_reserve": 2,
+  "tasks": {
+    "email_triage": {
+      "description": "Sort one incoming email. High: label automatically. Medium: Claude reads closely. Low: flag for the owner.",
+      "primary": "category",
+      "uncertain_label": "uncertain",
+      "cap_if_yes": ["sensitive"],
+      "flag_if_yes": ["urgent"],
+      "questions": {
+        "category": {
+          "type": "choice",
+          "instructions": "How should the recipient handle this email?",
+          "criteria": {
+            "needs_reply": "The sender asks a question or requests an action or a decision from the recipient",
+            "info_only": "Informational message from a person, no response needed",
+            "promo_newsletter": "Marketing, newsletter or bulk promotion",
+            "notification_automated": "Automated system notification, receipt, alert or confirmation",
+            "uncertain": "Not enough information to decide"
+          }
+        },
+        "urgent": {
+          "type": "noul",
+          "instructions": "Does this email contain a deadline or a time-sensitive request within the next 24 hours?"
+        },
+        "sensitive": {
+          "type": "noul",
+          "instructions": "Does this email involve money, payments, legal matters, contracts, personal documents, or ask the recipient to share a password, code or credentials?"
+        }
+      }
+    },
+    "draft_quality": {
+      "description": "Final pass over a drafted reply or a piece of content. The input holds the original message and the draft.",
+      "primary": "answers_the_message",
+      "cap_if_yes": ["unsupported_claims"],
+      "flag_if_yes": [],
+      "questions": {
+        "answers_the_message": {
+          "type": "noul",
+          "instructions": "Does the DRAFT directly and completely respond to what the ORIGINAL MESSAGE asks?"
+        },
+        "clear_and_polite": {
+          "type": "noul",
+          "instructions": "Is the DRAFT clear, polite and written in the same language as the ORIGINAL MESSAGE?"
+        },
+        "unsupported_claims": {
+          "type": "noul",
+          "instructions": "Does the DRAFT state a fact, date, price, promise or commitment that does not appear in the ORIGINAL MESSAGE?"
+        }
+      }
+    },
+    "source_relevance": {
+      "description": "Research filter. The input starts with the research question, then one source excerpt.",
+      "primary": "relevant",
+      "cap_if_yes": [],
+      "flag_if_yes": [],
+      "questions": {
+        "relevant": {
+          "type": "noul",
+          "instructions": "Does this SOURCE directly help answer the RESEARCH QUESTION written at the top?"
+        },
+        "reliability": {
+          "type": "score",
+          "instructions": "How reliable is this SOURCE as evidence?",
+          "criteria": [
+            "Unreliable, anonymous or promotional",
+            "Mixed or secondary reporting",
+            "Reliable primary or official source"
+          ]
+        }
+      }
+    },
+    "planning_priority": {
+      "description": "Priority score for one task or calendar item.",
+      "primary": "priority",
+      "cap_if_yes": [],
+      "flag_if_yes": ["deadline_within_7_days"],
+      "questions": {
+        "priority": {
+          "type": "score",
+          "instructions": "How high is the priority of this item for the owner of a small hotel?",
+          "criteria": ["Low", "Medium", "High"]
+        },
+        "deadline_within_7_days": {
+          "type": "noul",
+          "instructions": "Does this item have a deadline within the next 7 days?"
+        },
+        "can_wait": {
+          "type": "noul",
+          "instructions": "Can this item safely be postponed by more than one week?"
+        }
+      }
+    }
+  }
+}
